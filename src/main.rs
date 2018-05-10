@@ -35,7 +35,6 @@ fn main() {
         "set kernel heap size in bytes",
         "KERNEL_HEAP_SIZE",
     );
-    opts.optflag("", "crt0-header", "include crt0 header for PIC fixups");
     opts.optflag("v", "verbose", "be verbose");
 
     let matches = match opts.parse(&args[1..]) {
