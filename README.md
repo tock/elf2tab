@@ -1,5 +1,4 @@
-elf2tab
-=======
+# ![elf2tbf](http://www.tockos.org/assets/img/elf2tbf.svg "elf2tbf Logo")
 
 `elf2tab` is a tool that converts Tock userland apps from `.elf` files
 to Tock Application Bundles (TABs or `.tab` files). TABs are Tock apps
