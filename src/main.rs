@@ -105,7 +105,7 @@ fn elf_to_tbf(
     kernel_heap_len: u32,
     protected_region_size_arg: Option<u32>,
 ) -> io::Result<()> {
-    let package_name = package_name.unwrap_or(String::new());
+    let package_name = package_name.unwrap_or_default();
 
     // Get an array of the sections sorted so we place them in the proper order
     // in the binary.
@@ -120,7 +120,7 @@ fn elf_to_tbf(
 
     // Find the ELF segment for the RAM segment. That will tell us how much
     // RAM we need to reserve for when those are copied into memory.
-    for segment in input.phdrs.iter() {
+    for segment in &input.phdrs {
         if segment.progtype == elf::types::PT_LOAD
             && segment.flags.0 == elf::types::PF_W.0 + elf::types::PF_R.0
         {
@@ -146,7 +146,7 @@ fn elf_to_tbf(
     // are required to go in the TBF header.
     let mut writeable_flash_regions_count = 0;
 
-    for s in sections_sort.iter() {
+    for s in &sections_sort {
         let section = &input.sections[s.0];
 
         // Count write only sections as writeable flash regions.
@@ -215,7 +215,7 @@ fn elf_to_tbf(
     let mut binary: Vec<u8> = vec![0; protected_region_size as usize - header_length];
 
     // Iterate the sections in the ELF file and add them to the binary as needed
-    for s in sections_sort.iter() {
+    for s in &sections_sort {
         let section = &input.sections[s.0];
 
         // Determine if this is the section where the entry point is in. If it
@@ -279,7 +279,7 @@ fn elf_to_tbf(
     if verbose {
         println!("Searching for .rel.X sections to add.");
     }
-    for relocation_section_name in rel_sections.iter() {
+    for relocation_section_name in &rel_sections {
         let mut name: String = ".rel".to_owned();
         name.push_str(relocation_section_name);
 
@@ -287,12 +287,11 @@ fn elf_to_tbf(
             .sections
             .iter()
             .find(|section| section.shdr.name == name)
-            .map(|section| section.data.as_ref())
-            .unwrap_or(&[] as &[u8]);
+            .map_or(&[] as &[u8], |section| section.data.as_ref());
 
         relocation_binary.extend(rel_data);
 
-        if verbose && rel_data.len() > 0 {
+        if verbose && !rel_data.is_empty() {
             println!(
                 "  Adding {} section. Length: {} bytes at {} (0x{:x})",
                 name,
@@ -301,7 +300,7 @@ fn elf_to_tbf(
                 binary_index + mem::size_of::<u32>() + rel_data.len()
             );
         }
-        if rel_data.len() > 0 && align4needed!(binary_index) != 0 {
+        if !rel_data.is_empty() && align4needed!(binary_index) != 0 {
             println!(
                 "Warning! Placing section {} at 0x{:x}, which is not 4-byte aligned.",
                 name, binary_index
