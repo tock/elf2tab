@@ -9,7 +9,7 @@ readme = "README.md"
 keywords = ["elf, code, tock, compile"]
 
 [dependencies]
-getopts = "0.2.17"
 chrono = "0.4.2"
 tar = "0.4.15"
 elf = "0.0.10"
+structopt = "0.2.10"

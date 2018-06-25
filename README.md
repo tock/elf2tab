@@ -10,15 +10,23 @@ Usage
 -----
 
 ```
-Usage: elf2tab [-o OUTFILE] ELFFILE [ELFFILE...]
+USAGE:
+    elf2tab [FLAGS] [OPTIONS] --app-heap <APP_HEAP_SIZE> --kernel-heap <KERNEL_HEAP_SIZE> --stack <STACK_SIZE> -o <TAB> [ELF]...
 
-Options:
-    -o OUTFILE                      set output file name
-    -n PACKAGE_NAME                 set package name
-    --stack STACK_SIZE              set stack size in bytes
-    --app-heap APP_HEAP_SIZE        set app heap size in bytes
-    --kernel-heap KERNEL_HEAP_SIZE  set kernel heap size in bytes
-    -v, --verbose                   be verbose
+FLAGS:
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+    -v, --verbose    Be verbose
+
+OPTIONS:
+        --app-heap <APP_HEAP_SIZE>          App heap size in bytes
+        --kernel-heap <KERNEL_HEAP_SIZE>    Kernel heap size in bytes
+    -n <PACKAGE_NAME>                       Package Name
+        --stack <STACK_SIZE>                Stack size in bytes
+    -o <TAB>                                Output file name
+
+ARGS:
+    <ELF>...    App elf files
 ```
 
 For example, converting a "blink" app from a compiled .elf file (for a Cortex-M4

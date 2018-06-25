@@ -1,73 +1,24 @@
 extern crate chrono;
 extern crate elf;
-extern crate getopts;
 extern crate tar;
+#[macro_use]
+extern crate structopt;
 
-use getopts::Options;
 use std::cmp;
-use std::env;
 use std::fmt::Write as fmtwrite;
+use std::fs;
 use std::io;
 use std::io::{Seek, Write};
 use std::mem;
-use std::{fs, path};
 
 #[macro_use]
 mod util;
+mod cmdline;
 mod header;
+use structopt::StructOpt;
 
 fn main() {
-    let args: Vec<String> = env::args().collect();
-    let program = args[0].clone();
-    let mut opts = Options::new();
-    opts.reqopt("o", "", "set output file name", "OUTFILE");
-    opts.optopt("n", "", "set package name", "PACKAGE_NAME");
-    opts.reqopt("", "stack", "set stack size in bytes", "STACK_SIZE");
-    opts.reqopt(
-        "",
-        "app-heap",
-        "set app heap size in bytes",
-        "APP_HEAP_SIZE",
-    );
-    opts.reqopt(
-        "",
-        "kernel-heap",
-        "set kernel heap size in bytes",
-        "KERNEL_HEAP_SIZE",
-    );
-    opts.optflag("v", "verbose", "be verbose");
-
-    let matches = match opts.parse(&args[1..]) {
-        Ok(m) => m,
-        Err(f) => panic!(f.to_string()),
-    };
-
-    let output = matches.opt_str("o");
-    let package_name = matches.opt_str("n");
-    let verbose = matches.opt_present("v");
-
-    // Get the memory requirements from the app.
-    let stack_len = matches
-        .opt_str("stack")
-        .unwrap()
-        .parse::<u32>()
-        .expect("Stack size must be an integer.");
-    let app_heap_len = matches
-        .opt_str("app-heap")
-        .unwrap()
-        .parse::<u32>()
-        .expect("App heap size must be an integer.");
-    let kernel_heap_len = matches
-        .opt_str("kernel-heap")
-        .unwrap()
-        .parse::<u32>()
-        .expect("Kernel heap size must be an integer.");
-
-    // Check that we have at least one input file elf to process.
-    if matches.free.is_empty() {
-        print_usage(&program, opts);
-        return;
-    };
+    let opt = cmdline::Opt::from_args();
 
     // Create the metadata.toml file needed for the TAB file.
     let mut metadata_toml = String::new();
@@ -77,13 +28,12 @@ fn main() {
 name = \"{}\"
 only-for-boards = \"\"
 build-date = {}",
-        package_name.clone().unwrap(),
+        opt.package_name.clone().unwrap_or(String::new()),
         chrono::prelude::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
     ).unwrap();
 
     // Start creating a tar archive which will be the .tab file.
-    let tab_name = fs::File::create(path::Path::new(&output.unwrap()))
-        .expect("Could not create the output file.");
+    let tab_name = fs::File::create(&opt.output).expect("Could not create the output file.");
     let mut tab = tar::Builder::new(tab_name);
 
     // Add the metadata file without creating a real file on the filesystem.
@@ -96,9 +46,8 @@ build-date = {}",
 
     // Iterate all input elfs. Convert them to Tock friendly binaries and then
     // add them to the TAB file.
-    for input_elf in matches.free {
-        let elf_path = path::Path::new(&input_elf);
-        let tbf_path = path::Path::new(&input_elf).with_extension("tbf");
+    for elf_path in opt.input {
+        let tbf_path = elf_path.with_extension("tbf");
 
         let elffile = elf::File::open_path(&elf_path).expect("Could not open the .elf file.");
         // Get output file as both read/write for creating the binary and
@@ -115,11 +64,11 @@ build-date = {}",
         elf_to_tbf(
             &elffile,
             &mut outfile,
-            package_name.clone(),
-            verbose,
-            stack_len,
-            app_heap_len,
-            kernel_heap_len,
+            opt.package_name.clone(),
+            opt.verbose,
+            opt.stack_size,
+            opt.app_heap_size,
+            opt.kernel_heap_size,
         ).unwrap();
 
         // Add the file to the TAB tar file.
@@ -132,11 +81,6 @@ build-date = {}",
             &mut outfile,
         ).unwrap();
     }
-}
-
-fn print_usage(program: &str, opts: Options) {
-    let brief = format!("Usage: {} [-o OUTFILE] FILE [FILE...]", program);
-    print!("{}", opts.usage(&brief));
 }
 
 /// Convert an ELF file to a TBF (Tock Binary Format) binary file.
