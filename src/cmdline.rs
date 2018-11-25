@@ -1,30 +1,44 @@
 use std::path::PathBuf;
+use structopt;
+use structopt::StructOpt;
 
 #[derive(StructOpt, Debug)]
 #[structopt(
     about = "Convert Tock userland apps from .elf files to Tock Application Bundles (TABs or .tab files)."
 )]
+#[structopt(raw(setting = "structopt::clap::AppSettings::ColoredHelp"))]
 pub struct Opt {
     #[structopt(short = "v", long = "verbose", help = "Be verbose")]
     pub verbose: bool,
 
-    #[structopt(short = "o", name = "TAB", parse(from_os_str), help = "Output file name")]
+    #[structopt(name = "TABFILE", parse(from_os_str), help = "output file name")]
     pub output: PathBuf,
 
-    #[structopt(short = "n", name = "PACKAGE_NAME", help = "Package Name")]
+    #[structopt(
+        long = "package-name",
+        short = "n",
+        name = "NAME",
+        help = "Package Name"
+    )]
     pub package_name: Option<String>,
 
-    #[structopt(long = "stack", name = "STACK_SIZE", help = "Stack size in bytes")]
+    #[structopt(name = "STACK_SIZE", help = "in bytes")]
     pub stack_size: u32,
 
-    #[structopt(long = "app-heap", name = "APP_HEAP_SIZE", help = "App heap size in bytes")]
+    #[structopt(name = "APP_HEAP_SIZE", help = "in bytes")]
     pub app_heap_size: u32,
 
-    #[structopt(
-        long = "kernel-heap", name = "KERNEL_HEAP_SIZE", help = "Kernel heap size in bytes"
-    )]
+    #[structopt(name = "KERNEL_HEAP_SIZE", help = "in bytes")]
     pub kernel_heap_size: u32,
 
+    #[structopt(
+        name = "ELF",
+        help = "application file(s) to package",
+        parse(from_os_str)
+    )]
+    #[structopt(raw(required = "true"))]
+    pub input: Vec<PathBuf>,
+	
     #[structopt(
         long = "protected-region-size",
         name = "PROTECTED_REGION_SIZE",
@@ -32,6 +46,25 @@ pub struct Opt {
     )]
     pub protected_region_size: Option<u32>,
 
-    #[structopt(name = "ELF", help = "App elf files", parse(from_os_str))]
-    pub input: Vec<PathBuf>,
+
+}
+
+mod test {
+
+    use super::Opt;
+    use super::*;
+
+    #[test]
+    fn succeeds_if_all_required_arguments_are_specified() {
+        let args = vec!["elf2tab", "out.tab", "1024", "2048", "4098", "app.elf"];
+        let result = Opt::from_iter_safe(args.iter());
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn fails_if_required_arguments_are_missing() {
+        let args = vec!["out.tab", "1024", "2048", "4098", "app.elf"];
+        let result = Opt::from_iter_safe(args.iter());
+        assert!(result.is_err());
+    }
 }
