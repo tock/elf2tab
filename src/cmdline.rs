@@ -4,10 +4,10 @@ use structopt::clap::ArgGroup;
 use structopt::StructOpt;
 
 fn usage() -> &'static str {
-    "elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=[<filename>]] <elf>...
-    elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=[<filename>]] [--minimum-stack-size=<min-stack-size>] <elf>...
-    elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=[<filename>]] [--app-heap[=<heap-size>]]
-                    [--kernel-heap[=<kernel-heap-size>]] [--stack[=<stack-size>]] <elf>..."
+    "elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=<filename>] <elf>...
+    elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=<filename>] [--minimum-ram-size=<min-ram-size>] <elf>...
+    elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=<filename>] [--app-heap=<heap-size>]
+                    [--kernel-heap=<kernel-heap-size>] [--stack=<stack-size>] <elf>..."
 }
 
 #[derive(StructOpt, Debug)]
@@ -21,8 +21,8 @@ pub struct Opt {
     pub verbose: bool,
 
     #[structopt(
-        long = "minimum-stack-size",
-        name = "min-stack-size",
+        long = "minimum-ram-size",
+        name = "min-ram-size",
         help = "in bytes",
         conflicts_with = "stack-size",
         conflicts_with = "heap-size",
@@ -52,8 +52,7 @@ pub struct Opt {
         long = "stack",
         name = "stack-size",
         default_value = "0",
-        help = "in bytes",
-        conflicts_with = "debug"
+        help = "in bytes"
     )]
     pub stack_size: u32,
 
@@ -61,8 +60,7 @@ pub struct Opt {
         long = "app-heap",
         name = "heap-size",
         default_value = "0",
-        help = "in bytes",
-        conflicts_with = "minimum-stack-size"
+        help = "in bytes"
     )]
     pub app_heap_size: u32,
 
@@ -70,8 +68,7 @@ pub struct Opt {
         long = "kernel-heap",
         name = "kernel-heap-size",
         default_value = "0",
-        help = "in bytes",
-        conflicts_with = "minimum-stack-size"
+        help = "in bytes"
     )]
     pub kernel_heap_size: u32,
 
@@ -154,7 +151,7 @@ mod test {
                 "elf2tab",
                 "--package-name",
                 "my-pkg",
-                "--minimum-stack-size",
+                "--minimum-ram-size",
                 "10",
                 "app.elf",
             ];
@@ -171,7 +168,7 @@ mod test {
                 "elf2tab",
                 "--package-name",
                 "my-pkg",
-                "--minimum-stack-size",
+                "--minimum-ram-size",
                 "app.elf",
             ];
             let result = Opt::from_iter_safe(args.iter());
@@ -182,7 +179,7 @@ mod test {
                 "elf2tab",
                 "--package-name",
                 "my-pkg",
-                "--minimum-stack-size",
+                "--minimum-ram-size",
                 "10",
                 "--app-heap",
                 "10",
@@ -196,7 +193,7 @@ mod test {
                 "elf2tab",
                 "--package-name",
                 "my-pkg",
-                "--minimum-stack-size",
+                "--minimum-ram-size",
                 "10",
                 "--stack",
                 "10",
@@ -210,7 +207,7 @@ mod test {
                 "elf2tab",
                 "--package-name",
                 "my-pkg",
-                "--minimum-stack-size",
+                "--minimum-ram-size",
                 "10",
                 "--kernel-heap",
                 "10",
@@ -290,7 +287,7 @@ mod test {
                 "my-pkg",
                 "--kernel-heap",
                 "10",
-                "--minimum-stack-size",
+                "--minimum-ram-size",
                 "10",
                 "app.elf",
             ];
@@ -304,7 +301,7 @@ mod test {
                 "my-pkg",
                 "--app-heap",
                 "10",
-                "--minimum-stack-size",
+                "--minimum-ram-size",
                 "10",
                 "app.elf",
             ];
@@ -318,7 +315,7 @@ mod test {
                 "my-pkg",
                 "--stack",
                 "10",
-                "--minimum-stack-size",
+                "--minimum-ram-size",
                 "10",
                 "app.elf",
             ];
