@@ -1,7 +1,5 @@
 use std::path::PathBuf;
 use structopt;
-use structopt::clap::ArgGroup;
-use structopt::StructOpt;
 
 fn usage() -> &'static str {
     "elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=<filename>] <elf>...
@@ -92,8 +90,10 @@ pub struct Opt {
 
 mod test {
 
+    #[cfg(test)]
     use super::Opt;
-    use super::*;
+    #[cfg(test)]
+    use structopt::StructOpt;
 
     #[test]
     // elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=[<filename>]] <elf>...
