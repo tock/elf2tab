@@ -69,6 +69,7 @@ build-date = {}",
             opt.stack_size,
             opt.app_heap_size,
             opt.kernel_heap_size,
+            opt.protected_region_size,
         ).unwrap();
 
         // Add the file to the TAB tar file.
@@ -102,6 +103,7 @@ fn elf_to_tbf(
     stack_len: u32,
     app_heap_len: u32,
     kernel_heap_len: u32,
+    protected_region_size_arg: Option<u32>,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or(String::new());
 
@@ -177,8 +179,29 @@ fn elf_to_tbf(
         writeable_flash_regions_count,
         package_name,
     );
-    let protected_region_size = header_length;
-    binary_index += protected_region_size;
+    // If a protected region size was passed, confirm the header will fit.
+    // Otherwise, use the header size as the protected region size.
+    let protected_region_size =
+        if let Some(fixed_protected_region_size) = protected_region_size_arg {
+            if fixed_protected_region_size < header_length as u32 {
+                // The header doesn't fit in the provided protected region size;
+                // throw an error.
+                return Err(io::Error::new(
+                    io::ErrorKind::InvalidInput,
+                    format!(
+                    "protected_region_size = {} is too small for the TBF headers. Header size: {}",
+                    fixed_protected_region_size, header_length),
+                ));
+            }
+            // Update the header's protected size, as the protected region may
+            // be larger than the header size.
+            tbfheader.set_protected_size(fixed_protected_region_size - header_length as u32);
+
+            fixed_protected_region_size
+        } else {
+            header_length as u32
+        };
+    binary_index += protected_region_size as usize;
 
     // The init function is where the app will start executing, defined as an
     // offset from the end of protected region at the beginning of the app in
@@ -189,7 +212,7 @@ fn elf_to_tbf(
     let mut init_fn_offset: u32 = 0;
 
     // Need a place to put the app sections before we know the true TBF header.
-    let mut binary: Vec<u8> = Vec::new();
+    let mut binary: Vec<u8> = vec![0; protected_region_size as usize - header_length];
 
     // Iterate the sections in the ELF file and add them to the binary as needed
     for s in sections_sort.iter() {
@@ -203,8 +226,10 @@ fn elf_to_tbf(
             if verbose {
                 println!("Entry point is in {} section", section.shdr.name);
             }
+            // init_fn_offset is specified relative to the end of the TBF
+            // header.
             init_fn_offset = (input.ehdr.entry - section.shdr.addr) as u32
-                + (binary_index - protected_region_size) as u32
+                + (binary_index - header_length) as u32
         }
 
         // If this is writeable, executable, or allocated, is nonzero length,

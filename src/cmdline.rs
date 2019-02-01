@@ -25,6 +25,13 @@ pub struct Opt {
     )]
     pub kernel_heap_size: u32,
 
+    #[structopt(
+        long = "protected-region-size",
+        name = "PROTECTED_REGION_SIZE",
+        help = "Size of the protected region (including headers)"
+    )]
+    pub protected_region_size: Option<u32>,
+
     #[structopt(name = "ELF", help = "App elf files", parse(from_os_str))]
     pub input: Vec<PathBuf>,
 }

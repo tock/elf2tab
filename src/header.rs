@@ -209,6 +209,13 @@ impl TbfHeader {
         self.generate().unwrap().get_ref().len()
     }
 
+    /// Update the header with the correct protected_size. protected_size should
+    /// not include the size of the header itself (as defined in the Main TLV
+    /// element type).
+    pub fn set_protected_size(&mut self, protected_size: u32) {
+        self.hdr_main.protected_size = protected_size;
+    }
+
     /// Update the header with correct size for the entire app binary.
     pub fn set_total_size(&mut self, total_size: u32) {
         self.hdr_base.total_size = total_size;
