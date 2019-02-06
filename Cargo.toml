@@ -1,6 +1,6 @@
 [package]
 name = "elf2tab"
-version = "0.4.0-dev"
+version = "0.4.0"
 description = "Compiles from ELF to TAB (a Tock Application Bundle using the Tock Binary Format)"
 authors = ["Tock Project Developers <tock-dev@googlegroups.com>"]
 repository = "https://github.com/tock/tock"
