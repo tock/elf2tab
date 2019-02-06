@@ -6,7 +6,7 @@ authors = ["Tock Project Developers <tock-dev@googlegroups.com>"]
 repository = "https://github.com/tock/tock"
 license = "MIT"
 readme = "README.md"
-keywords = ["elf, code, tock, compile"]
+keywords = ["elf", "code", "tock", "compile"]
 
 [dependencies]
 chrono = "0.4.2"

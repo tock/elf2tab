@@ -65,7 +65,7 @@ dependencies = [
 
 [[package]]
 name = "elf2tab"
-version = "0.4.0-dev"
+version = "0.4.0"
 dependencies = [
  "chrono 0.4.2 (registry+https://github.com/rust-lang/crates.io-index)",
  "elf 0.0.10 (registry+https://github.com/rust-lang/crates.io-index)",
