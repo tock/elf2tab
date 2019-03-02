@@ -2,10 +2,13 @@ use std::path::PathBuf;
 use structopt;
 
 fn usage() -> &'static str {
-    "elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=<filename>] <elf>...
-    elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=<filename>] [--minimum-ram-size=<min-ram-size>] <elf>...
-    elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=<filename>] [--app-heap=<heap-size>]
-                    [--kernel-heap=<kernel-heap-size>] [--stack=<stack-size>] <elf>..."
+    "elf2tab [FLAGS] [--protected-region-size=<protected-region-size>]
+                    [--package-name=<pkg-name>] [--output-file=<filename>] <elf>...
+    elf2tab [FLAGS] [--proteced-region-size=<protected-region-size>] [--package-name=<pkg-name>]
+                    [--output-file=<filename>] [--minimum-ram-size=<min-ram-size>] <elf>...
+    elf2tab [FLAGS] [--proteced-region-size=<protected-region-size>]
+                    [--package-name=<pkg-name>] [--output-file=<filename>]
+                    [--app-heap=<heap-size>] [--kernel-heap=<kernel-heap-size>] [--stack=<stack-size>] <elf>..."
 }
 
 #[derive(StructOpt, Debug)]
@@ -77,15 +80,13 @@ pub struct Opt {
     )]
     #[structopt(raw(required = "true"))]
     pub input: Vec<PathBuf>,
-	
+
     #[structopt(
         long = "protected-region-size",
-        name = "PROTECTED_REGION_SIZE",
+        name = "protected-region-size",
         help = "Size of the protected region (including headers)"
     )]
     pub protected_region_size: Option<u32>,
-
-
 }
 
 mod test {
