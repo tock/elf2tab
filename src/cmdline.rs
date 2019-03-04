@@ -52,7 +52,7 @@ pub struct Opt {
     #[structopt(
         long = "stack",
         name = "stack-size",
-        default_value = "0",
+        default_value = "2048",
         help = "in bytes"
     )]
     pub stack_size: u32,
@@ -60,7 +60,7 @@ pub struct Opt {
     #[structopt(
         long = "app-heap",
         name = "heap-size",
-        default_value = "0",
+        default_value = "1024",
         help = "in bytes"
     )]
     pub app_heap_size: u32,
@@ -68,7 +68,7 @@ pub struct Opt {
     #[structopt(
         long = "kernel-heap",
         name = "kernel-heap-size",
-        default_value = "0",
+        default_value = "1024",
         help = "in bytes"
     )]
     pub kernel_heap_size: u32,
