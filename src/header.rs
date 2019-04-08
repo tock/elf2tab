@@ -8,6 +8,14 @@ use std::mem;
 use std::vec;
 use util;
 
+// number of drivers in tock/capsules/src/driver.rs
+const NUM_DRIVERS: usize = 30;
+// default: no permissions
+const DEFAULT_PERMS: u32 = 0b0;
+
+// number of permission bytes
+const PERM_LENGTH: usize = (NUM_DRIVERS + 7) / 8;
+
 #[repr(u16)]
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
@@ -16,6 +24,7 @@ enum TbfHeaderTypes {
     TbfHeaderWriteableFlashRegions = 2,
     TbfHeaderPackageName = 3,
     TbfHeaderPicOption1 = 4,
+    TbfHeaderPerm = 5,
 }
 
 #[repr(C)]
@@ -52,6 +61,13 @@ struct TbfHeaderWriteableFlashRegion {
     size: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+struct TbfHeaderPerm {
+    base: TbfHeaderTlv,
+    permissions: [u8; PERM_LENGTH],
+}
+
 impl fmt::Display for TbfHeaderBase {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -70,6 +86,17 @@ impl fmt::Display for TbfHeaderBase {
             self.total_size,
             self.flags,
             self.flags,
+        )
+    }
+}
+
+impl fmt::Display for TbfHeaderPerm {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "\n           permissions:          0b{}\n",
+            self.permissions.into_iter().map(|b| format!("{:08b}
+                                   ", b)).rev().collect::<String>()
         )
     }
 }
@@ -112,6 +139,7 @@ pub struct TbfHeader {
     hdr_main: TbfHeaderMain,
     hdr_pkg_name_tlv: Option<TbfHeaderTlv>,
     hdr_wfr: Vec<TbfHeaderWriteableFlashRegion>,
+    hdr_perm: TbfHeaderPerm,
     package_name: String,
     package_name_pad: usize,
 }
@@ -138,6 +166,14 @@ impl TbfHeader {
             },
             hdr_pkg_name_tlv: None,
             hdr_wfr: Vec::new(),
+            hdr_perm: TbfHeaderPerm {
+                base: TbfHeaderTlv {
+                    tipe: TbfHeaderTypes::TbfHeaderPerm,
+                    length: (mem::size_of::<TbfHeaderPerm>() - mem::size_of::<TbfHeaderTlv>())
+                        as u16,
+                },
+                permissions: [0; PERM_LENGTH],
+            },
             package_name: String::new(),
             package_name_pad: 0,
         }
@@ -158,7 +194,9 @@ impl TbfHeader {
     ) -> usize {
         // Need to calculate lengths ahead of time.
         // Need the base and the main section.
-        let mut header_length = mem::size_of::<TbfHeaderBase>() + mem::size_of::<TbfHeaderMain>();
+        let mut header_length = mem::size_of::<TbfHeaderBase>()
+                              + mem::size_of::<TbfHeaderMain>()
+                              + mem::size_of::<TbfHeaderPerm>();
 
         // If we have a package name, add that section.
         self.package_name_pad = if package_name.len() > 0 {
@@ -178,11 +216,16 @@ impl TbfHeader {
 
         // Flags default to app is enabled.
         let flags = 0x00000001;
+        let permissions = &mut [0; PERM_LENGTH];
+        for i in 0..PERM_LENGTH {
+            permissions[i] = ((DEFAULT_PERMS & (0xFF << (8*i))) >> (8*i)) as u8
+        }
 
         // Fill in the fields that we can at this point.
         self.hdr_base.header_size = header_length as u16;
         self.hdr_base.flags = flags;
         self.hdr_main.minimum_ram_size = minimum_ram_size;
+        self.hdr_perm.permissions = *permissions;
 
         // If a package name exists, keep track of it and add it to the header.
         self.package_name = package_name;
@@ -245,6 +288,7 @@ impl TbfHeader {
         // Write all bytes to an in-memory file for the header.
         header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_base) })?;
         header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_main) })?;
+        header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_perm) })?;
         if self.package_name.len() > 0 {
             header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_pkg_name_tlv) })?;
             header_buf.write_all(self.package_name.as_ref())?;
@@ -305,6 +349,7 @@ impl fmt::Display for TbfHeader {
         write!(f, "TBF Header:")?;
         write!(f, "{}", self.hdr_base)?;
         write!(f, "{}", self.hdr_main)?;
+        write!(f, "{}", self.hdr_perm)?;
         for wfr in self.hdr_wfr.iter() {
             write!(f, "{}", wfr)?;
         }
