@@ -11,7 +11,13 @@ Usage
 
 ```
 USAGE:
-    elf2tab [FLAGS] [OPTIONS] --app-heap <APP_HEAP_SIZE> --kernel-heap <KERNEL_HEAP_SIZE> --stack <STACK_SIZE> -o <TAB> [ELF]...
+    elf2tab [FLAGS] [--protected-region-size=<protected-region-size>]
+                    [--package-name=<pkg-name>] [--output-file=<filename>] <elf>...
+    elf2tab [FLAGS] [--proteced-region-size=<protected-region-size>] [--package-name=<pkg-name>]
+                    [--output-file=<filename>] [--minimum-ram-size=<min-ram-size>] <elf>...
+    elf2tab [FLAGS] [--proteced-region-size=<protected-region-size>]
+                    [--package-name=<pkg-name>] [--output-file=<filename>]
+                    [--app-heap=<heap-size>] [--kernel-heap=<kernel-heap-size>] [--stack=<stack-size>] <elf>...
 
 FLAGS:
     -h, --help       Prints help information
@@ -19,14 +25,16 @@ FLAGS:
     -v, --verbose    Be verbose
 
 OPTIONS:
-        --app-heap <APP_HEAP_SIZE>          App heap size in bytes
-        --kernel-heap <KERNEL_HEAP_SIZE>    Kernel heap size in bytes
-    -n <PACKAGE_NAME>                       Package Name
-        --stack <STACK_SIZE>                Stack size in bytes
-    -o <TAB>                                Output file name
+    -o, --output-file <filename>             output file name [default: TockApp.tab]
+        --app-heap <heap-size>               in bytes [default: 1024]
+        --kernel-heap <kernel-heap-size>     in bytes [default: 1024]
+        --minimum-ram-size <min-ram-size>    in bytes
+    -p, --package-name <pkg-name>            package name
+        --protected-region-size <protected-region-size>    Size of the protected region (including headers)
+        --stack <stack-size>                 in bytes [default: 2048]
 
 ARGS:
-    <ELF>...    App elf files
+    <elf>...    application file(s) to package
 ```
 
 For example, converting a "blink" app from a compiled .elf file (for a Cortex-M4
@@ -37,7 +45,7 @@ device) with this tool would look like:
 It also supports (and encourages!) combing .elf files for multiple architectures
 into a single tab:
 
-	$ elf2tab -o blink.tab -n blink --stack 1024 --app-heap 1024 --kernel-heap 1024 cortex-m0.elf cortex-m3.elf cortex-m4.elf
+    $ elf2tab -o blink.tab -n blink --stack 1024 --app-heap 1024 --kernel-heap 1024 cortex-m0.elf cortex-m3.elf cortex-m4.elf
 
 
 Compiling elf2tab
