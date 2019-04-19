@@ -8,13 +8,9 @@ use std::mem;
 use std::vec;
 use util;
 
-// number of drivers in tock/capsules/src/driver.rs
-const NUM_DRIVERS: usize = 30;
 // default: no permissions
-const DEFAULT_PERMS: u32 = 0b0;
-
-// number of permission bytes
-const PERM_LENGTH: usize = (NUM_DRIVERS + 7) / 8;
+const DEFAULT_PERMS_LENGTH: usize = 0;
+const DEFAULT_PERMS: [u32; DEFAULT_PERMS_LENGTH] = [];
 
 #[repr(u16)]
 #[derive(Clone, Copy, Debug)]
@@ -65,7 +61,7 @@ struct TbfHeaderWriteableFlashRegion {
 #[derive(Clone, Copy, Debug)]
 struct TbfHeaderPerm {
     base: TbfHeaderTlv,
-    permissions: [u8; PERM_LENGTH],
+    permissions: [u32; DEFAULT_PERMS_LENGTH],
 }
 
 impl fmt::Display for TbfHeaderBase {
@@ -94,8 +90,8 @@ impl fmt::Display for TbfHeaderPerm {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
             f,
-            "\n           permissions:          0b{}\n",
-            self.permissions.into_iter().map(|b| format!("{:08b}
+            "\n           permissions:            {}\n",
+            self.permissions.into_iter().map(|b| format!("{:>#10X}
                                    ", b)).rev().collect::<String>()
         )
     }
@@ -172,7 +168,7 @@ impl TbfHeader {
                     length: (mem::size_of::<TbfHeaderPerm>() - mem::size_of::<TbfHeaderTlv>())
                         as u16,
                 },
-                permissions: [0; PERM_LENGTH],
+                permissions: DEFAULT_PERMS,
             },
             package_name: String::new(),
             package_name_pad: 0,
@@ -216,16 +212,11 @@ impl TbfHeader {
 
         // Flags default to app is enabled.
         let flags = 0x00000001;
-        let permissions = &mut [0; PERM_LENGTH];
-        for i in 0..PERM_LENGTH {
-            permissions[i] = ((DEFAULT_PERMS & (0xFF << (8*i))) >> (8*i)) as u8
-        }
 
         // Fill in the fields that we can at this point.
         self.hdr_base.header_size = header_length as u16;
         self.hdr_base.flags = flags;
         self.hdr_main.minimum_ram_size = minimum_ram_size;
-        self.hdr_perm.permissions = *permissions;
 
         // If a package name exists, keep track of it and add it to the header.
         self.package_name = package_name;
