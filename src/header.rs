@@ -8,6 +8,10 @@ use std::mem;
 use std::vec;
 use util;
 
+// default: no permissions
+const DEFAULT_PERMS_LENGTH: usize = 0;
+const DEFAULT_PERMS: [u32; DEFAULT_PERMS_LENGTH] = [];
+
 #[repr(u16)]
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
@@ -16,6 +20,7 @@ enum TbfHeaderTypes {
     TbfHeaderWriteableFlashRegions = 2,
     TbfHeaderPackageName = 3,
     TbfHeaderPicOption1 = 4,
+    TbfHeaderPerm = 5,
 }
 
 #[repr(C)]
@@ -52,6 +57,13 @@ struct TbfHeaderWriteableFlashRegion {
     size: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+struct TbfHeaderPerm {
+    base: TbfHeaderTlv,
+    permissions: [u32; DEFAULT_PERMS_LENGTH],
+}
+
 impl fmt::Display for TbfHeaderBase {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(
@@ -70,6 +82,17 @@ impl fmt::Display for TbfHeaderBase {
             self.total_size,
             self.flags,
             self.flags,
+        )
+    }
+}
+
+impl fmt::Display for TbfHeaderPerm {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(
+            f,
+            "\n           permissions:            {}\n",
+            self.permissions.into_iter().map(|b| format!("{:>#10X}
+                                   ", b)).rev().collect::<String>()
         )
     }
 }
@@ -112,6 +135,7 @@ pub struct TbfHeader {
     hdr_main: TbfHeaderMain,
     hdr_pkg_name_tlv: Option<TbfHeaderTlv>,
     hdr_wfr: Vec<TbfHeaderWriteableFlashRegion>,
+    hdr_perm: TbfHeaderPerm,
     package_name: String,
     package_name_pad: usize,
 }
@@ -138,6 +162,14 @@ impl TbfHeader {
             },
             hdr_pkg_name_tlv: None,
             hdr_wfr: Vec::new(),
+            hdr_perm: TbfHeaderPerm {
+                base: TbfHeaderTlv {
+                    tipe: TbfHeaderTypes::TbfHeaderPerm,
+                    length: (mem::size_of::<TbfHeaderPerm>() - mem::size_of::<TbfHeaderTlv>())
+                        as u16,
+                },
+                permissions: DEFAULT_PERMS,
+            },
             package_name: String::new(),
             package_name_pad: 0,
         }
@@ -158,7 +190,9 @@ impl TbfHeader {
     ) -> usize {
         // Need to calculate lengths ahead of time.
         // Need the base and the main section.
-        let mut header_length = mem::size_of::<TbfHeaderBase>() + mem::size_of::<TbfHeaderMain>();
+        let mut header_length = mem::size_of::<TbfHeaderBase>()
+                              + mem::size_of::<TbfHeaderMain>()
+                              + mem::size_of::<TbfHeaderPerm>();
 
         // If we have a package name, add that section.
         self.package_name_pad = if package_name.len() > 0 {
@@ -245,6 +279,7 @@ impl TbfHeader {
         // Write all bytes to an in-memory file for the header.
         header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_base) })?;
         header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_main) })?;
+        header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_perm) })?;
         if self.package_name.len() > 0 {
             header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_pkg_name_tlv) })?;
             header_buf.write_all(self.package_name.as_ref())?;
@@ -305,6 +340,7 @@ impl fmt::Display for TbfHeader {
         write!(f, "TBF Header:")?;
         write!(f, "{}", self.hdr_base)?;
         write!(f, "{}", self.hdr_main)?;
+        write!(f, "{}", self.hdr_perm)?;
         for wfr in self.hdr_wfr.iter() {
             write!(f, "{}", wfr)?;
         }
