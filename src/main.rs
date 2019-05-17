@@ -28,7 +28,7 @@ fn main() {
 name = \"{}\"
 only-for-boards = \"\"
 build-date = {}",
-        opt.package_name.clone().unwrap_or(String::new()),
+        opt.package_name.as_ref().map_or("", |package_name| package_name.as_str()),
         chrono::prelude::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
     ).unwrap();
 
