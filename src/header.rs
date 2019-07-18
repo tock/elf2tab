@@ -1,9 +1,6 @@
 use std::fmt;
 use std::io;
-use std::io::Read;
-use std::io::Seek;
-use std::io::SeekFrom;
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem;
 use std::vec;
 use util;
@@ -12,10 +9,10 @@ use util;
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
 enum TbfHeaderTypes {
-    TbfHeaderMain = 1,
-    TbfHeaderWriteableFlashRegions = 2,
-    TbfHeaderPackageName = 3,
-    TbfHeaderPicOption1 = 4,
+    Main = 1,
+    WriteableFlashRegions = 2,
+    PackageName = 3,
+    PicOption1 = 4,
 }
 
 #[repr(C)]
@@ -117,8 +114,8 @@ pub struct TbfHeader {
 }
 
 impl TbfHeader {
-    pub fn new() -> TbfHeader {
-        TbfHeader {
+    pub fn new() -> Self {
+        Self {
             hdr_base: TbfHeaderBase {
                 version: 2, // Current version is 2.
                 header_size: 0,
@@ -128,7 +125,7 @@ impl TbfHeader {
             },
             hdr_main: TbfHeaderMain {
                 base: TbfHeaderTlv {
-                    tipe: TbfHeaderTypes::TbfHeaderMain,
+                    tipe: TbfHeaderTypes::Main,
                     length: (mem::size_of::<TbfHeaderMain>() - mem::size_of::<TbfHeaderTlv>())
                         as u16,
                 },
@@ -161,7 +158,7 @@ impl TbfHeader {
         let mut header_length = mem::size_of::<TbfHeaderBase>() + mem::size_of::<TbfHeaderMain>();
 
         // If we have a package name, add that section.
-        self.package_name_pad = if package_name.len() > 0 {
+        self.package_name_pad = if !package_name.is_empty() {
             // Header increases by the TLV and name length.
             header_length += mem::size_of::<TbfHeaderTlv>() + package_name.len();
             // How much padding is needed to ensure we are aligned to 4?
@@ -177,7 +174,7 @@ impl TbfHeader {
         header_length += mem::size_of::<TbfHeaderWriteableFlashRegion>() * writeable_flash_regions;
 
         // Flags default to app is enabled.
-        let flags = 0x00000001;
+        let flags = 0x0000_0001;
 
         // Fill in the fields that we can at this point.
         self.hdr_base.header_size = header_length as u16;
@@ -186,9 +183,9 @@ impl TbfHeader {
 
         // If a package name exists, keep track of it and add it to the header.
         self.package_name = package_name;
-        if self.package_name.len() > 0 {
+        if !self.package_name.is_empty() {
             self.hdr_pkg_name_tlv = Some(TbfHeaderTlv {
-                tipe: TbfHeaderTypes::TbfHeaderPackageName,
+                tipe: TbfHeaderTypes::PackageName,
                 length: self.package_name.len() as u16,
             });
         }
@@ -197,7 +194,7 @@ impl TbfHeader {
         for _ in 0..writeable_flash_regions {
             self.hdr_wfr.push(TbfHeaderWriteableFlashRegion {
                 base: TbfHeaderTlv {
-                    tipe: TbfHeaderTypes::TbfHeaderWriteableFlashRegions,
+                    tipe: TbfHeaderTypes::WriteableFlashRegions,
                     length: 8,
                 },
                 offset: 0,
@@ -206,7 +203,7 @@ impl TbfHeader {
         }
 
         // Return the length by generating the header and seeing how long it is.
-        self.generate().unwrap().get_ref().len()
+        self.generate().expect("No header was generated").get_ref().len()
     }
 
     /// Update the header with the correct protected_size. protected_size should
@@ -245,14 +242,14 @@ impl TbfHeader {
         // Write all bytes to an in-memory file for the header.
         header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_base) })?;
         header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_main) })?;
-        if self.package_name.len() > 0 {
+        if !self.package_name.is_empty() {
             header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_pkg_name_tlv) })?;
             header_buf.write_all(self.package_name.as_ref())?;
             util::do_pad(&mut header_buf, self.package_name_pad)?;
         }
 
         // Put all writeable flash region header elements in.
-        for wfr in self.hdr_wfr.iter() {
+        for wfr in &self.hdr_wfr {
             header_buf.write_all(unsafe { util::as_byte_slice(wfr) })?;
         }
 
@@ -270,15 +267,15 @@ impl TbfHeader {
     ) -> io::Result<(io::Cursor<vec::Vec<u8>>)> {
         // Start from the beginning and iterate through the buffer as words.
         header_buf.seek(SeekFrom::Start(0))?;
-        let mut wordbuf = [0u8; 4];
+        let mut wordbuf = [0_u8; 4];
         let mut checksum: u32 = 0;
         loop {
             let count = header_buf.read(&mut wordbuf)?;
             // Combine the bytes back into a word, handling if we don't
             // get a full word.
             let mut word = 0;
-            for i in 0..count {
-                word |= (wordbuf[i] as u32) << (8 * i);
+            for (i, c) in wordbuf.iter().enumerate().take(count) {
+                word |= u32::from(*c) << (8 * i);
             }
             checksum ^= word;
             if count != 4 {
@@ -289,7 +286,7 @@ impl TbfHeader {
         // Now we need to insert the checksum into the correct position in the
         // header.
         header_buf.seek(io::SeekFrom::Start(12))?;
-        wordbuf[0] = ((checksum >> 0) & 0xFF) as u8;
+        wordbuf[0] = (checksum & 0xFF) as u8;
         wordbuf[1] = ((checksum >> 8) & 0xFF) as u8;
         wordbuf[2] = ((checksum >> 16) & 0xFF) as u8;
         wordbuf[3] = ((checksum >> 24) & 0xFF) as u8;
@@ -305,7 +302,7 @@ impl fmt::Display for TbfHeader {
         write!(f, "TBF Header:")?;
         write!(f, "{}", self.hdr_base)?;
         write!(f, "{}", self.hdr_main)?;
-        for wfr in self.hdr_wfr.iter() {
+        for wfr in &self.hdr_wfr {
             write!(f, "{}", wfr)?;
         }
         Ok(())

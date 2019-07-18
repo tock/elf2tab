@@ -29,7 +29,7 @@ macro_rules! align4needed {
 
 pub fn do_pad(output: &mut io::Write, length: usize) -> io::Result<()> {
     let mut pad = length;
-    let zero_buf = [0u8; 512];
+    let zero_buf = [0_u8; 512];
     while pad > 0 {
         let amount_to_write = cmp::min(zero_buf.len(), pad);
         pad -= output.write(&zero_buf[..amount_to_write])?;
@@ -37,6 +37,6 @@ pub fn do_pad(output: &mut io::Write, length: usize) -> io::Result<()> {
     Ok(())
 }
 
-pub unsafe fn as_byte_slice<'a, T: Copy>(input: &'a T) -> &'a [u8] {
+pub unsafe fn as_byte_slice<T: Copy>(input: &T) -> &[u8] {
     slice::from_raw_parts(input as *const T as *const u8, mem::size_of::<T>())
 }
