@@ -214,6 +214,8 @@ fn elf_to_tbf(
     // Need a place to put the app sections before we know the true TBF header.
     let mut binary: Vec<u8> = vec![0; protected_region_size as usize - header_length];
 
+    let mut entry_point_found = false;
+
     // Iterate the sections in the ELF file and add them to the binary as needed
     for s in &sections_sort {
         let section = &input.sections[s.0];
@@ -222,7 +224,14 @@ fn elf_to_tbf(
         // is, then we need to calculate the correct init_fn_offset.
         if input.ehdr.entry >= section.shdr.addr
             && input.ehdr.entry < (section.shdr.addr + section.shdr.size)
+            && (section.shdr.name.find("debug")).is_none()
         {
+            // panic in case we detect entry point in multiple sections.
+            if entry_point_found {
+                panic!("Duplicate entry point in {} section", section.shdr.name);
+            }
+            entry_point_found = true;
+
             if verbose {
                 println!("Entry point is in {} section", section.shdr.name);
             }
