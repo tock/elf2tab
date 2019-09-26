@@ -50,6 +50,12 @@ build-date = {}",
         let tbf_path = elf_path.with_extension("tbf");
 
         let elffile = elf::File::open_path(&elf_path).expect("Could not open the .elf file.");
+
+        if opt.output.clone() == tbf_path.clone() {
+            panic!("tab file {} and output file {} cannot be the same file",
+                   opt.output.clone().to_str().unwrap(), tbf_path.clone().to_str().unwrap());
+        }
+
         // Get output file as both read/write for creating the binary and
         // adding it to the TAB tar file.
         let mut outfile: fs::File = fs::OpenOptions::new()
