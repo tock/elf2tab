@@ -2,13 +2,21 @@ use std::path::PathBuf;
 use structopt;
 
 fn usage() -> &'static str {
-    "elf2tab [FLAGS] [--protected-region-size=<protected-region-size>]
-                    [--package-name=<pkg-name>] [--output-file=<filename>] <elf>...
-    elf2tab [FLAGS] [--proteced-region-size=<protected-region-size>] [--package-name=<pkg-name>]
-                    [--output-file=<filename>] [--minimum-ram-size=<min-ram-size>] <elf>...
-    elf2tab [FLAGS] [--proteced-region-size=<protected-region-size>]
-                    [--package-name=<pkg-name>] [--output-file=<filename>]
-                    [--app-heap=<heap-size>] [--kernel-heap=<kernel-heap-size>] [--stack=<stack-size>] <elf>..."
+    "elf2tab [FLAGS] [OPTIONS] ELF...
+Converts Tock userspace programs from .elf files to Tock Application Bundles.
+
+FLAGS:
+    --help, -h                     print help information
+    --version, -V                  print version information
+OPTIONS:
+    --verbose, -v                  be verbose
+    --protected-region-size=SIZE   size of protected region including headers
+    --package-name=NAME            name of package [default: empty]
+    --output-file=FILE, -o FILE    [default: TockApp.tab]
+    --minimum-ram-size=SIZE        in bytes [default: from RAM sections in ELF]
+    --app-heap=SIZE                in bytes [default: 1024]
+    --kernel-heap=SIZE             in bytes [default: 1024]
+    --stack=SIZE                   in bytes [default: 2048]"
 }
 
 #[derive(StructOpt, Debug)]
