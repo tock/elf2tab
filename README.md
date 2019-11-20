@@ -13,9 +13,9 @@ Usage
 USAGE:
     elf2tab [FLAGS] [--protected-region-size=<protected-region-size>]
                     [--package-name=<pkg-name>] [--output-file=<filename>] <elf>...
-    elf2tab [FLAGS] [--proteced-region-size=<protected-region-size>] [--package-name=<pkg-name>]
+    elf2tab [FLAGS] [--protected-region-size=<protected-region-size>] [--package-name=<pkg-name>]
                     [--output-file=<filename>] [--minimum-ram-size=<min-ram-size>] <elf>...
-    elf2tab [FLAGS] [--proteced-region-size=<protected-region-size>]
+    elf2tab [FLAGS] [--protected-region-size=<protected-region-size>]
                     [--package-name=<pkg-name>] [--output-file=<filename>]
                     [--app-heap=<heap-size>] [--kernel-heap=<kernel-heap-size>] [--stack=<stack-size>] <elf>...
 
