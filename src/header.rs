@@ -61,7 +61,7 @@ struct TbfHeaderWriteableFlashRegion {
 #[derive(Clone, Copy, Debug)]
 struct TbfHeaderPerm {
     base: TbfHeaderTlv,
-    permissions: [u32; DEFAULT_PERMS_LENGTH],
+    permissions: &'static [u32],
 }
 
 impl fmt::Display for TbfHeaderBase {
@@ -168,7 +168,7 @@ impl TbfHeader {
                     length: (mem::size_of::<TbfHeaderPerm>() - mem::size_of::<TbfHeaderTlv>())
                         as u16,
                 },
-                permissions: DEFAULT_PERMS,
+                permissions: &DEFAULT_PERMS,
             },
             package_name: String::new(),
             package_name_pad: 0,
@@ -187,6 +187,7 @@ impl TbfHeader {
         minimum_ram_size: u32,
         writeable_flash_regions: usize,
         package_name: String,
+        permissions: &'static [u32],
     ) -> usize {
         // Need to calculate lengths ahead of time.
         // Need the base and the main section.
@@ -217,6 +218,7 @@ impl TbfHeader {
         self.hdr_base.header_size = header_length as u16;
         self.hdr_base.flags = flags;
         self.hdr_main.minimum_ram_size = minimum_ram_size;
+        self.hdr_perm.permissions = permissions;
 
         // If a package name exists, keep track of it and add it to the header.
         self.package_name = package_name;

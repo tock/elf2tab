@@ -19,6 +19,9 @@ use structopt::StructOpt;
 
 fn main() {
     let opt = cmdline::Opt::from_args();
+    let mut perms_mut = opt.permissions.to_vec();
+    perms_mut.sort(); // for binary search
+    let perms = perms_mut.as_slice();
 
     // Create the metadata.toml file needed for the TAB file.
     let mut metadata_toml = String::new();
@@ -69,6 +72,7 @@ build-date = {}",
             opt.stack_size,
             opt.app_heap_size,
             opt.kernel_heap_size,
+            perms,
             opt.protected_region_size,
         ).unwrap();
 
@@ -103,6 +107,7 @@ fn elf_to_tbf(
     stack_len: u32,
     app_heap_len: u32,
     kernel_heap_len: u32,
+    permissions: &'static [u32],
     protected_region_size_arg: Option<u32>,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or(String::new());
@@ -178,6 +183,7 @@ fn elf_to_tbf(
         minimum_ram_size,
         writeable_flash_regions_count,
         package_name,
+        permissions,
     );
     // If a protected region size was passed, confirm the header will fit.
     // Otherwise, use the header size as the protected region size.
