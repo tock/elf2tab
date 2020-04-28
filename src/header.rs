@@ -239,7 +239,7 @@ impl TbfHeader {
     }
 
     /// Create the header in binary form.
-    pub fn generate(&self) -> io::Result<(io::Cursor<vec::Vec<u8>>)> {
+    pub fn generate(&self) -> io::Result<io::Cursor<vec::Vec<u8>>> {
         let mut header_buf = io::Cursor::new(Vec::new());
 
         // Write all bytes to an in-memory file for the header.
@@ -267,7 +267,7 @@ impl TbfHeader {
     fn inject_checksum(
         &self,
         mut header_buf: io::Cursor<vec::Vec<u8>>,
-    ) -> io::Result<(io::Cursor<vec::Vec<u8>>)> {
+    ) -> io::Result<io::Cursor<vec::Vec<u8>>> {
         // Start from the beginning and iterate through the buffer as words.
         header_buf.seek(SeekFrom::Start(0))?;
         let mut wordbuf = [0_u8; 4];

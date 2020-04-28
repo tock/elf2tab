@@ -109,9 +109,9 @@ build-date = {}",
 /// - Sections in a segment that is RW and set to be loaded will be in RAM and
 ///   should count towards minimum required RAM.
 /// - Sections that are writeable flash regions include .wfr in their name.
-fn elf_to_tbf(
+fn elf_to_tbf<W: Write>(
     input: &elf::File,
-    output: &mut Write,
+    output: &mut W,
     package_name: Option<String>,
     verbose: bool,
     stack_len: u32,
