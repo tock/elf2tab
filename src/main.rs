@@ -58,7 +58,7 @@ build-date = {}",
             panic!(
                 "tab file {} and output file {} cannot be the same file",
                 opt.output.clone().to_str().unwrap(),
-                tbf_path.clone().to_str().unwrap()
+                tbf_path.to_str().unwrap()
             );
         }
 
