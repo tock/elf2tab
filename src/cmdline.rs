@@ -10,6 +10,7 @@ FLAGS:
     --version, -V                  print version information
 OPTIONS:
     --verbose, -v                  be verbose
+    --deterministic                produce a deterministic TAB file
     --protected-region-size=SIZE   size of protected region including headers
     --package-name=NAME            name of package [default: empty]
     --output-file=FILE, -o FILE    [default: TockApp.tab]
@@ -28,6 +29,9 @@ OPTIONS:
 pub struct Opt {
     #[structopt(short = "v", long = "verbose", help = "Be verbose")]
     pub verbose: bool,
+
+    #[structopt(long = "deterministic", help = "Produce a deterministic TAB file")]
+    pub deterministic: bool,
 
     #[structopt(
         long = "minimum-ram-size",
