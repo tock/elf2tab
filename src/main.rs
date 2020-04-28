@@ -28,9 +28,12 @@ fn main() {
 name = \"{}\"
 only-for-boards = \"\"
 build-date = {}",
-        opt.package_name.as_ref().map_or("", |package_name| package_name.as_str()),
+        opt.package_name
+            .as_ref()
+            .map_or("", |package_name| package_name.as_str()),
         chrono::prelude::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-    ).unwrap();
+    )
+    .unwrap();
 
     // Start creating a tar archive which will be the .tab file.
     let tab_name = fs::File::create(&opt.output).expect("Could not create the output file.");
@@ -52,8 +55,11 @@ build-date = {}",
         let elffile = elf::File::open_path(&elf_path).expect("Could not open the .elf file.");
 
         if opt.output.clone() == tbf_path.clone() {
-            panic!("tab file {} and output file {} cannot be the same file",
-                   opt.output.clone().to_str().unwrap(), tbf_path.clone().to_str().unwrap());
+            panic!(
+                "tab file {} and output file {} cannot be the same file",
+                opt.output.clone().to_str().unwrap(),
+                tbf_path.clone().to_str().unwrap()
+            );
         }
 
         // Get output file as both read/write for creating the binary and
@@ -76,7 +82,8 @@ build-date = {}",
             opt.app_heap_size,
             opt.kernel_heap_size,
             opt.protected_region_size,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Add the file to the TAB tar file.
         outfile.seek(io::SeekFrom::Start(0)).unwrap();
@@ -86,7 +93,8 @@ build-date = {}",
         tab.append_file(
             tbf_path.with_extension("bin").file_name().unwrap(),
             &mut outfile,
-        ).unwrap();
+        )
+        .unwrap();
     }
 }
 
@@ -251,7 +259,8 @@ fn elf_to_tbf(
         // and is type `PROGBITS` we want to add it to the binary.
         if (section.shdr.flags.0
             & (elf::types::SHF_WRITE.0 + elf::types::SHF_EXECINSTR.0 + elf::types::SHF_ALLOC.0)
-            != 0) && section.shdr.shtype == elf::types::SHT_PROGBITS
+            != 0)
+            && section.shdr.shtype == elf::types::SHT_PROGBITS
             && section.shdr.size > 0
         {
             if verbose {

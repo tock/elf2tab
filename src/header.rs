@@ -203,7 +203,10 @@ impl TbfHeader {
         }
 
         // Return the length by generating the header and seeing how long it is.
-        self.generate().expect("No header was generated").get_ref().len()
+        self.generate()
+            .expect("No header was generated")
+            .get_ref()
+            .len()
     }
 
     /// Update the header with the correct protected_size. protected_size should
