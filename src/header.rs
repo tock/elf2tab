@@ -51,55 +51,40 @@ struct TbfHeaderWriteableFlashRegion {
 
 impl fmt::Display for TbfHeaderBase {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
+        writeln!(
             f,
             "
-               version: {:>8} {:>#10X}
-           header_size: {:>8} {:>#10X}
-            total_size: {:>8} {:>#10X}
-                 flags: {:>8} {:>#10X}
-",
-            self.version,
-            self.version,
-            self.header_size,
-            self.header_size,
-            self.total_size,
-            self.total_size,
-            self.flags,
-            self.flags,
+               version: {0:>8} {0:>#10X}
+           header_size: {1:>8} {1:>#10X}
+            total_size: {2:>8} {2:>#10X}
+                 flags: {3:>8} {3:>#10X}",
+            self.version, self.header_size, self.total_size, self.flags,
         )
     }
 }
 
 impl fmt::Display for TbfHeaderMain {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
+        writeln!(
             f,
             "
-        init_fn_offset: {:>8} {:>#10X}
-        protected_size: {:>8} {:>#10X}
-      minimum_ram_size: {:>8} {:>#10X}
-",
-            self.init_fn_offset,
-            self.init_fn_offset,
-            self.protected_size,
-            self.protected_size,
-            self.minimum_ram_size,
-            self.minimum_ram_size,
+        init_fn_offset: {0:>8} {0:>#10X}
+        protected_size: {1:>8} {1:>#10X}
+      minimum_ram_size: {2:>8} {2:>#10X}",
+            self.init_fn_offset, self.protected_size, self.minimum_ram_size,
         )
     }
 }
 
 impl fmt::Display for TbfHeaderWriteableFlashRegion {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(
+        writeln!(
             f,
             "
     flash region:
-                offset: {:>8} {:>#10X}
-                  size: {:>8} {:>#10X}
-",
-            self.offset, self.offset, self.size, self.size,
+                offset: {0:>8} {0:>#10X}
+                  size: {1:>8} {1:>#10X}",
+            self.offset, self.size,
         )
     }
 }
@@ -203,7 +188,10 @@ impl TbfHeader {
         }
 
         // Return the length by generating the header and seeing how long it is.
-        self.generate().expect("No header was generated").get_ref().len()
+        self.generate()
+            .expect("No header was generated")
+            .get_ref()
+            .len()
     }
 
     /// Update the header with the correct protected_size. protected_size should
@@ -236,7 +224,7 @@ impl TbfHeader {
     }
 
     /// Create the header in binary form.
-    pub fn generate(&self) -> io::Result<(io::Cursor<vec::Vec<u8>>)> {
+    pub fn generate(&self) -> io::Result<io::Cursor<vec::Vec<u8>>> {
         let mut header_buf = io::Cursor::new(Vec::new());
 
         // Write all bytes to an in-memory file for the header.
@@ -264,7 +252,7 @@ impl TbfHeader {
     fn inject_checksum(
         &self,
         mut header_buf: io::Cursor<vec::Vec<u8>>,
-    ) -> io::Result<(io::Cursor<vec::Vec<u8>>)> {
+    ) -> io::Result<io::Cursor<vec::Vec<u8>>> {
         // Start from the beginning and iterate through the buffer as words.
         header_buf.seek(SeekFrom::Start(0))?;
         let mut wordbuf = [0_u8; 4];
@@ -290,7 +278,7 @@ impl TbfHeader {
         wordbuf[1] = ((checksum >> 8) & 0xFF) as u8;
         wordbuf[2] = ((checksum >> 16) & 0xFF) as u8;
         wordbuf[3] = ((checksum >> 24) & 0xFF) as u8;
-        header_buf.write(&wordbuf)?;
+        header_buf.write_all(&wordbuf)?;
         header_buf.seek(io::SeekFrom::Start(0))?;
 
         Ok(header_buf)
