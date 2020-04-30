@@ -56,8 +56,11 @@ fn main() {
         let elffile = elf::File::open_path(&elf_path).expect("Could not open the .elf file.");
 
         if opt.output.clone() == tbf_path.clone() {
-            panic!("tab file {} and output file {} cannot be the same file",
-                   opt.output.clone().to_str().unwrap(), tbf_path.clone().to_str().unwrap());
+            panic!(
+                "tab file {} and output file {} cannot be the same file",
+                opt.output.clone().to_str().unwrap(),
+                tbf_path.to_str().unwrap()
+            );
         }
 
         // Get output file as both read/write for creating the binary and
@@ -80,7 +83,8 @@ fn main() {
             opt.app_heap_size,
             opt.kernel_heap_size,
             opt.protected_region_size,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Add the file to the TAB tar file.
         outfile.seek(io::SeekFrom::Start(0)).unwrap();
@@ -90,7 +94,8 @@ fn main() {
         tab.append_file(
             tbf_path.with_extension("bin").file_name().unwrap(),
             &mut outfile,
-        ).unwrap();
+        )
+        .unwrap();
     }
 }
 
@@ -105,9 +110,9 @@ fn main() {
 /// - Sections in a segment that is RW and set to be loaded will be in RAM and
 ///   should count towards minimum required RAM.
 /// - Sections that are writeable flash regions include .wfr in their name.
-fn elf_to_tbf(
+fn elf_to_tbf<W: Write>(
     input: &elf::File,
-    output: &mut Write,
+    output: &mut W,
     package_name: Option<String>,
     verbose: bool,
     stack_len: u32,
@@ -255,18 +260,21 @@ fn elf_to_tbf(
         // and is type `PROGBITS` we want to add it to the binary.
         if (section.shdr.flags.0
             & (elf::types::SHF_WRITE.0 + elf::types::SHF_EXECINSTR.0 + elf::types::SHF_ALLOC.0)
-            != 0) && section.shdr.shtype == elf::types::SHT_PROGBITS
+            != 0)
+            && section.shdr.shtype == elf::types::SHT_PROGBITS
             && section.shdr.size > 0
         {
             if verbose {
                 println!(
-                    "Including the {} section at offset {} (0x{:x})",
-                    section.shdr.name, binary_index, binary_index
+                    "  Adding {0} section. Offset: {1} ({1:#x}). Length: {2} ({2:#x}) bytes.",
+                    section.shdr.name,
+                    binary_index,
+                    section.data.len(),
                 );
             }
             if align4needed!(binary_index) != 0 {
                 println!(
-                    "Warning! Placing section {} at 0x{:x}, which is not 4-byte aligned.",
+                    "Warning! Placing section {} at {:#x}, which is not 4-byte aligned.",
                     section.shdr.name, binary_index
                 );
             }
@@ -312,16 +320,15 @@ fn elf_to_tbf(
 
         if verbose && !rel_data.is_empty() {
             println!(
-                "  Adding {} section. Length: {} bytes at {} (0x{:x})",
+                "  Adding {0} section. Offset: {1} ({1:#x}). Length: {2} ({2:#x}) bytes.",
                 name,
-                rel_data.len(),
                 binary_index + mem::size_of::<u32>() + rel_data.len(),
-                binary_index + mem::size_of::<u32>() + rel_data.len()
+                rel_data.len(),
             );
         }
         if !rel_data.is_empty() && align4needed!(binary_index) != 0 {
             println!(
-                "Warning! Placing section {} at 0x{:x}, which is not 4-byte aligned.",
+                "Warning! Placing section {} at {:#x}, which is not 4-byte aligned.",
                 name, binary_index
             );
         }
@@ -354,12 +361,7 @@ fn elf_to_tbf(
     output.write_all(tbfheader.generate().unwrap().get_ref())?;
     output.write_all(binary.as_ref())?;
 
-    let rel_data_len: [u8; 4] = [
-        (relocation_binary.len() & 0xff) as u8,
-        (relocation_binary.len() >> 8 & 0xff) as u8,
-        (relocation_binary.len() >> 16 & 0xff) as u8,
-        (relocation_binary.len() >> 24 & 0xff) as u8,
-    ];
+    let rel_data_len: [u8; 4] = (relocation_binary.len() as u32).to_le_bytes();
     output.write_all(&rel_data_len)?;
     output.write_all(relocation_binary.as_ref())?;
 

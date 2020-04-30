@@ -27,7 +27,7 @@ macro_rules! align4needed {
     };
 }
 
-pub fn do_pad(output: &mut io::Write, length: usize) -> io::Result<()> {
+pub fn do_pad<W: io::Write>(output: &mut W, length: usize) -> io::Result<()> {
     let mut pad = length;
     let zero_buf = [0_u8; 512];
     while pad > 0 {
