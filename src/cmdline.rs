@@ -6,18 +6,20 @@ fn usage() -> &'static str {
 Converts Tock userspace programs from .elf files to Tock Application Bundles.
 
 FLAGS:
-    --help, -h                     print help information
-    --version, -V                  print version information
+    -h, --help       Prints help information
+    -V, --version    Prints version information
+    -v, --verbose    Be verbose
+
 OPTIONS:
-    --verbose, -v                  be verbose
-    --deterministic                produce a deterministic TAB file
-    --protected-region-size=SIZE   size of protected region including headers
-    --package-name=NAME            name of package [default: empty]
-    --output-file=FILE, -o FILE    [default: TockApp.tab]
-    --minimum-ram-size=SIZE        in bytes [default: from RAM sections in ELF]
-    --app-heap=SIZE                in bytes [default: 1024]
-    --kernel-heap=SIZE             in bytes [default: 1024]
-    --stack=SIZE                   in bytes [default: 2048]"
+        --deterministic                      Produce a deterministic TAB file
+    -o, --output-file <filename>             Output file name [default: TockApp.tab]
+    -p, --package-name <pkg-name>            Package name [default: empty]
+        --protected-region-size <protected-region-size>
+                                             Size of the protected region (including headers)
+        --minimum-ram-size <min-ram-size>    In bytes [default: from RAM sections in ELF]
+        --app-heap <heap-size>               In bytes [default: 1024]
+        --kernel-heap <kernel-heap-size>     In bytes [default: 1024]
+        --stack <stack-size>                 In bytes [default: 2048]"
 }
 
 #[derive(StructOpt, Debug)]
