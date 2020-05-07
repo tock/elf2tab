@@ -25,13 +25,15 @@ FLAGS:
     -v, --verbose    Be verbose
 
 OPTIONS:
-    -o, --output-file <filename>             output file name [default: TockApp.tab]
-        --app-heap <heap-size>               in bytes [default: 1024]
-        --kernel-heap <kernel-heap-size>     in bytes [default: 1024]
-        --minimum-ram-size <min-ram-size>    in bytes
-    -p, --package-name <pkg-name>            package name
-        --protected-region-size <protected-region-size>    Size of the protected region (including headers)
-        --stack <stack-size>                 in bytes [default: 2048]
+        --deterministic                      Produce a deterministic TAB file
+    -o, --output-file <filename>             Output file name [default: TockApp.tab]
+    -p, --package-name <pkg-name>            Package name [default: empty]
+        --protected-region-size <protected-region-size>
+                                             Size of the protected region (including headers)
+        --minimum-ram-size <min-ram-size>    In bytes [default: from RAM sections in ELF]
+        --app-heap <heap-size>               In bytes [default: 1024]
+        --kernel-heap <kernel-heap-size>     In bytes [default: 1024]
+        --stack <stack-size>                 In bytes [default: 2048]
 
 ARGS:
     <elf>...    application file(s) to package

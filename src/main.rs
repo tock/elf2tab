@@ -20,24 +20,25 @@ use structopt::StructOpt;
 fn main() {
     let opt = cmdline::Opt::from_args();
 
+    let package_name = opt
+        .package_name
+        .as_ref()
+        .map_or("", |package_name| package_name.as_str());
+
     // Create the metadata.toml file needed for the TAB file.
     let mut metadata_toml = String::new();
-    write!(
-        &mut metadata_toml,
-        "tab-version = 1
-name = \"{}\"
-only-for-boards = \"\"
-build-date = {}",
-        opt.package_name
-            .as_ref()
-            .map_or("", |package_name| package_name.as_str()),
-        chrono::prelude::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
-    )
-    .unwrap();
+    writeln!(&mut metadata_toml, "tab-version = 1").unwrap();
+    writeln!(&mut metadata_toml, "name = \"{}\"", package_name).unwrap();
+    writeln!(&mut metadata_toml, "only-for-boards = \"\"").unwrap();
+    if !opt.deterministic {
+        let build_date = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        writeln!(&mut metadata_toml, "build-date = {}", build_date).unwrap();
+    }
 
     // Start creating a tar archive which will be the .tab file.
     let tab_name = fs::File::create(&opt.output).expect("Could not create the output file.");
     let mut tab = tar::Builder::new(tab_name);
+    tab.mode(tar::HeaderMode::Deterministic);
 
     // Add the metadata file without creating a real file on the filesystem.
     let mut header = tar::Header::new_gnu();
