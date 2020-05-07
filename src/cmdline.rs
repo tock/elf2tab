@@ -13,7 +13,7 @@ FLAGS:
 OPTIONS:
         --deterministic                      Produce a deterministic TAB file
     -o, --output-file <filename>             Output file name [default: TockApp.tab]
-    -p, --package-name <pkg-name>            Package name [default: empty]
+    -n, --package-name <pkg-name>            Package name [default: empty]
         --protected-region-size <protected-region-size>
                                              Size of the protected region (including headers)
         --minimum-ram-size <min-ram-size>    In bytes [default: from RAM sections in ELF]
@@ -57,7 +57,7 @@ pub struct Opt {
 
     #[structopt(
         long = "package-name",
-        short = "p",
+        short = "n",
         name = "pkg-name",
         help = "package name"
     )]
