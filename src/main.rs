@@ -83,6 +83,8 @@ fn main() {
             opt.app_heap_size,
             opt.kernel_heap_size,
             opt.protected_region_size,
+            opt.fixed_address_ram,
+            opt.fixed_address_flash,
         )
         .unwrap();
 
@@ -119,6 +121,8 @@ fn elf_to_tbf<W: Write>(
     app_heap_len: u32,
     kernel_heap_len: u32,
     protected_region_size_arg: Option<u32>,
+    fixed_address_ram: Option<u32>,
+    fixed_address_flash: Option<u32>,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -193,6 +197,8 @@ fn elf_to_tbf<W: Write>(
         minimum_ram_size,
         writeable_flash_regions_count,
         package_name,
+        fixed_address_ram,
+        fixed_address_flash,
     );
     // If a protected region size was passed, confirm the header will fit.
     // Otherwise, use the header size as the protected region size.

@@ -1,5 +1,6 @@
 //! Command line parser setup for elf2tab.
 
+use std::num::ParseIntError;
 use std::path::PathBuf;
 
 use structopt;
@@ -7,6 +8,15 @@ use structopt;
 fn usage() -> &'static str {
     "elf2tab [FLAGS] [OPTIONS] ELF...
 Converts Tock userspace programs from .elf files to Tock Application Bundles."
+}
+
+fn parse_hex(src: &str) -> Result<u32, ParseIntError> {
+    let without_prefix = src.trim_start_matches("0x");
+    if without_prefix == src {
+        u32::from_str_radix(without_prefix, 10)
+    } else {
+        u32::from_str_radix(without_prefix, 16)
+    }
 }
 
 #[derive(StructOpt, Debug)]
@@ -88,6 +98,22 @@ pub struct Opt {
         help = "Size of the protected region (including headers)"
     )]
     pub protected_region_size: Option<u32>,
+
+    #[structopt(
+        long = "fixed-address-ram",
+        name = "fixed-address-ram",
+        help = "Address in RAM app requires.",
+        parse(try_from_str=parse_hex)
+    )]
+    pub fixed_address_ram: Option<u32>,
+
+    #[structopt(
+        long = "fixed-address-flash",
+        name = "fixed-address-flash",
+        help = "Address in flash app requires.",
+        parse(try_from_str=parse_hex)
+    )]
+    pub fixed_address_flash: Option<u32>,
 }
 
 mod test {
@@ -275,6 +301,57 @@ mod test {
             ];
             let result = Opt::from_iter_safe(args.iter());
             assert!(result.is_ok());
+        }
+    }
+
+    #[test]
+    fn fixed_addresses_succeed() {
+        {
+            let args = vec!["elf2tab", "--fixed-address-ram", "0x20005000", "app.elf"];
+            let result = Opt::from_iter_safe(args.iter());
+            assert!(result.is_ok());
+            let opt = result.unwrap();
+            assert!(opt.fixed_address_ram == Some(0x20005000));
+            assert!(opt.fixed_address_flash == None);
+        }
+        {
+            let args = vec!["elf2tab", "--fixed-address-flash", "0x00005000", "app.elf"];
+            let result = Opt::from_iter_safe(args.iter());
+            assert!(result.is_ok());
+            let opt = result.unwrap();
+            assert!(opt.fixed_address_flash == Some(0x00005000));
+            assert!(opt.fixed_address_ram == None);
+        }
+        {
+            let args = vec!["elf2tab", "--fixed-address-flash", "900", "app.elf"];
+            let result = Opt::from_iter_safe(args.iter());
+            assert!(result.is_ok());
+            let opt = result.unwrap();
+            assert!(opt.fixed_address_flash == Some(900));
+            assert!(opt.fixed_address_ram == None);
+        }
+        {
+            let args = vec!["elf2tab", "--fixed-address-ram", "4000", "app.elf"];
+            let result = Opt::from_iter_safe(args.iter());
+            assert!(result.is_ok());
+            let opt = result.unwrap();
+            assert!(opt.fixed_address_ram == Some(4000));
+            assert!(opt.fixed_address_flash == None);
+        }
+        {
+            let args = vec![
+                "elf2tab",
+                "--fixed-address-ram",
+                "0x20004000",
+                "--fixed-address-flash",
+                "0x30000",
+                "app.elf",
+            ];
+            let result = Opt::from_iter_safe(args.iter());
+            assert!(result.is_ok());
+            let opt = result.unwrap();
+            assert!(opt.fixed_address_ram == Some(0x20004000));
+            assert!(opt.fixed_address_flash == Some(0x30000));
         }
     }
 
