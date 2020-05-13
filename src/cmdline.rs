@@ -1,33 +1,20 @@
+//! Command line parser setup for elf2tab.
+
 use std::path::PathBuf;
+
 use structopt;
 
 fn usage() -> &'static str {
     "elf2tab [FLAGS] [OPTIONS] ELF...
-Converts Tock userspace programs from .elf files to Tock Application Bundles.
-
-FLAGS:
-    -h, --help       Prints help information
-    -V, --version    Prints version information
-    -v, --verbose    Be verbose
-
-OPTIONS:
-        --deterministic                      Produce a deterministic TAB file
-    -o, --output-file <filename>             Output file name [default: TockApp.tab]
-    -n, --package-name <pkg-name>            Package name [default: empty]
-        --protected-region-size <protected-region-size>
-                                             Size of the protected region (including headers)
-        --minimum-ram-size <min-ram-size>    In bytes [default: from RAM sections in ELF]
-        --app-heap <heap-size>               In bytes [default: 1024]
-        --kernel-heap <kernel-heap-size>     In bytes [default: 1024]
-        --stack <stack-size>                 In bytes [default: 2048]"
+Converts Tock userspace programs from .elf files to Tock Application Bundles."
 }
 
 #[derive(StructOpt, Debug)]
 #[structopt(
     about = "Convert Tock userland apps from .elf files to Tock Application Bundles (TABs or .tab files).",
-    raw(usage = "usage()")
+    usage = usage(),
+    global_setting(structopt::clap::AppSettings::ColoredHelp)
 )]
-#[structopt(raw(setting = "structopt::clap::AppSettings::ColoredHelp"))]
 pub struct Opt {
     #[structopt(short = "v", long = "verbose", help = "Be verbose")]
     pub verbose: bool,
@@ -90,9 +77,9 @@ pub struct Opt {
     #[structopt(
         name = "elf",
         help = "application file(s) to package",
-        parse(from_os_str)
+        parse(from_os_str),
+        required = true
     )]
-    #[structopt(raw(required = "true"))]
     pub input: Vec<PathBuf>,
 
     #[structopt(
