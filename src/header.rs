@@ -1,9 +1,9 @@
+use crate::{align4needed, util};
 use std::fmt;
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem;
 use std::vec;
-use util;
 
 #[repr(u16)]
 #[derive(Clone, Copy, Debug)]

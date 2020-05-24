@@ -1,24 +1,18 @@
-extern crate chrono;
-extern crate elf;
-extern crate tar;
-#[macro_use]
-extern crate structopt;
-
+use cmdline::Opt;
 use std::cmp;
 use std::fmt::Write as fmtwrite;
 use std::fs;
 use std::io;
 use std::io::{Seek, Write};
 use std::mem;
-
-#[macro_use]
-mod util;
-mod cmdline;
-mod header;
 use structopt::StructOpt;
 
+mod cmdline;
+mod header;
+mod util;
+
 fn main() {
-    let opt = cmdline::Opt::from_args();
+    let opt = Opt::from_args();
 
     let package_name = opt
         .package_name

@@ -2,7 +2,7 @@
 
 use std::path::PathBuf;
 
-use structopt;
+use structopt::StructOpt;
 
 fn usage() -> &'static str {
     "elf2tab [FLAGS] [OPTIONS] ELF...
