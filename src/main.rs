@@ -6,6 +6,7 @@ use std::io;
 use std::io::{Seek, Write};
 use std::mem;
 use structopt::StructOpt;
+use util::{align_to, amount_alignment_needed};
 
 mod cmdline;
 mod header;
@@ -146,7 +147,8 @@ fn elf_to_tbf<W: Write>(
 
     // Add in room the app is asking us to reserve for the stack and heaps to
     // the minimum required RAM size.
-    minimum_ram_size += align8!(stack_len) + align4!(app_heap_len) + align4!(kernel_heap_len);
+    minimum_ram_size +=
+        align_to(stack_len, 8) + align_to(app_heap_len, 4) + align_to(kernel_heap_len, 4);
 
     // Need an array of sections to look for relocation data to include.
     let mut rel_sections: Vec<String> = Vec::new();
@@ -266,7 +268,7 @@ fn elf_to_tbf<W: Write>(
                     section.data.len(),
                 );
             }
-            if align4needed!(binary_index) != 0 {
+            if amount_alignment_needed(binary_index as u32, 4) != 0 {
                 println!(
                     "Warning! Placing section {} at {:#x}, which is not 4-byte aligned.",
                     section.shdr.name, binary_index
@@ -320,7 +322,7 @@ fn elf_to_tbf<W: Write>(
                 rel_data.len(),
             );
         }
-        if !rel_data.is_empty() && align4needed!(binary_index) != 0 {
+        if !rel_data.is_empty() && amount_alignment_needed(binary_index as u32, 4) != 0 {
             println!(
                 "Warning! Placing section {} at {:#x}, which is not 4-byte aligned.",
                 name, binary_index

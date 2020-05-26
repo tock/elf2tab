@@ -1,9 +1,10 @@
-use crate::{align4needed, util};
+use crate::util;
 use std::fmt;
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem;
 use std::vec;
+use util::amount_alignment_needed;
 
 #[repr(u16)]
 #[derive(Clone, Copy, Debug)]
@@ -147,10 +148,10 @@ impl TbfHeader {
             // Header increases by the TLV and name length.
             header_length += mem::size_of::<TbfHeaderTlv>() + package_name.len();
             // How much padding is needed to ensure we are aligned to 4?
-            let pad = align4needed!(header_length);
+            let pad = amount_alignment_needed(header_length as u32, 4);
             // Header length increases by that padding
-            header_length += pad;
-            pad
+            header_length += pad as usize;
+            pad as usize
         } else {
             0
         };
@@ -242,7 +243,10 @@ impl TbfHeader {
         }
 
         let current_length = header_buf.get_ref().len();
-        util::do_pad(&mut header_buf, align4needed!(current_length))?;
+        util::do_pad(
+            &mut header_buf,
+            amount_alignment_needed(current_length as u32, 4) as usize,
+        )?;
 
         self.inject_checksum(header_buf)
     }
