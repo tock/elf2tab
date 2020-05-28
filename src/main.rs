@@ -83,8 +83,6 @@ fn main() {
             opt.app_heap_size,
             opt.kernel_heap_size,
             opt.protected_region_size,
-            opt.fixed_address_ram,
-            opt.fixed_address_flash,
         )
         .unwrap();
 
@@ -121,8 +119,6 @@ fn elf_to_tbf<W: Write>(
     app_heap_len: u32,
     kernel_heap_len: u32,
     protected_region_size_arg: Option<u32>,
-    fixed_address_ram: Option<u32>,
-    fixed_address_flash: Option<u32>,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -157,6 +153,44 @@ fn elf_to_tbf<W: Write>(
     // Add in room the app is asking us to reserve for the stack and heaps to
     // the minimum required RAM size.
     minimum_ram_size += align8!(stack_len) + align4!(app_heap_len) + align4!(kernel_heap_len);
+
+    // Check for fixed addresses.
+    //
+    // We do this by looking at segments in the ELF, and seeing if the virtual
+    // addresses match what expect for Tock PIC, or if they seem to be specific
+    // fixed addresses that the app was compiled for.
+    let mut fixed_address_flash: Option<u32> = None;
+    let mut fixed_address_ram: Option<u32> = None;
+    for segment in &input.phdrs {
+        match segment.progtype {
+            elf::types::PT_LOAD => {
+                // Look for segments based on their flags.
+                if segment.flags.0 == elf::types::PF_W.0 + elf::types::PF_R.0 {
+                    // Read and Write. This implies this segment is the RAM
+                    // section. If this is standard Tock PIC, then this virtual
+                    // address will be at 0x00000000. Otherwise, we interpret
+                    // this to mean that the binary was compiled for a fixed
+                    // address in RAM.
+                    if segment.vaddr != 0x00000000 {
+                        fixed_address_ram = Some(segment.vaddr as u32);
+                    }
+                } else if segment.flags.0
+                    == elf::types::PF_W.0 + elf::types::PF_R.0 + elf::types::PF_X.0
+                {
+                    // Read, Write, and Execute. This implies the section is the
+                    // flash segment. If this is standard Tock PIC, then this
+                    // virtual address will be at 0x80000000. Otherwise, we
+                    // interpret this to mean that the binary was compiled for a
+                    // fixed address in flash.
+                    if segment.vaddr != 0x80000000 {
+                        fixed_address_flash = Some(segment.vaddr as u32);
+                    }
+                }
+            }
+
+            _ => {}
+        }
+    }
 
     // Need an array of sections to look for relocation data to include.
     let mut rel_sections: Vec<String> = Vec::new();
