@@ -3,28 +3,14 @@ use std::io;
 use std::mem;
 use std::slice;
 
-/// Takes a value and rounds it up to be aligned % 4
-#[macro_export]
-macro_rules! align4 {
-    ($e:expr) => {
-        ($e) + ((4 - (($e) % 4)) % 4)
-    };
-}
-
-/// Takes a value and rounds it up to be aligned % 8
-#[macro_export]
-macro_rules! align8 {
-    ($e:expr) => {
-        ($e) + ((8 - (($e) % 8)) % 8)
-    };
+/// Takes a value and rounds it up to be aligned % box_size
+pub fn align_to(value: u32, box_size: u32) -> u32 {
+    value + ((box_size - (value % box_size)) % box_size)
 }
 
 /// How much needs to be added to get a value aligned % 4
-#[macro_export]
-macro_rules! align4needed {
-    ($e:expr) => {
-        (4 - (($e) % 4)) % 4
-    };
+pub fn amount_alignment_needed(value: u32, box_size: u32) -> u32 {
+    align_to(value, box_size) - value
 }
 
 pub fn do_pad<W: io::Write>(output: &mut W, length: usize) -> io::Result<()> {
@@ -39,4 +25,37 @@ pub fn do_pad<W: io::Write>(output: &mut W, length: usize) -> io::Result<()> {
 
 pub unsafe fn as_byte_slice<T: Copy>(input: &T) -> &[u8] {
     slice::from_raw_parts(input as *const T as *const u8, mem::size_of::<T>())
+}
+
+#[cfg(test)]
+mod test {
+    use super::{align_to, amount_alignment_needed};
+
+    #[test]
+    pub fn keeps_aligned_values() {
+        let result = align_to(8, 4);
+
+        assert_eq!(result, 8);
+    }
+
+    #[test]
+    pub fn aligns_to_the_next_box() {
+        let result = align_to(3, 4);
+
+        assert_eq!(result, 4);
+    }
+
+    #[test]
+    pub fn aligns_to_the_next_box_with_another_box_size() {
+        let result = align_to(7, 8);
+
+        assert_eq!(result, 8);
+    }
+
+    #[test]
+    pub fn computes_distance_to_lattice_point() {
+        let result = amount_alignment_needed(7, 8);
+
+        assert_eq!(result, 1);
+    }
 }
