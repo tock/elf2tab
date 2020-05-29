@@ -1,4 +1,3 @@
-use cmdline::Opt;
 use std::cmp;
 use std::fmt::Write as fmtwrite;
 use std::fs;
@@ -13,7 +12,7 @@ mod header;
 mod util;
 
 fn main() {
-    let opt = Opt::from_args();
+    let opt = cmdline::Opt::from_args();
 
     let package_name = opt
         .package_name
