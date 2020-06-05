@@ -158,9 +158,19 @@ fn elf_to_tbf<W: Write>(
     //
     // We do this by looking at segments in the ELF, and seeing if the virtual
     // addresses match what expect for Tock PIC, or if they seem to be specific
-    // fixed addresses that the app was compiled for.
+    // fixed addresses that the app was compiled for. This is complicated
+    // because there might be multiple segments for flash or RAM, even if the
+    // app is compiled for PIC.
+    //
+    // We use the following algorithm:
+    // - If there is a segment that matches the PIC address we expect, then we
+    //   assume the app is PIC, and we do not include the matching fixed address
+    //   address.
+    // - Otherwise, we use the lowest address that we find as the fixed address.
     let mut fixed_address_flash: Option<u32> = None;
     let mut fixed_address_ram: Option<u32> = None;
+    let mut fixed_address_flash_pic: bool = false;
+    let mut fixed_address_ram_pic: bool = false;
     for segment in &input.phdrs {
         match segment.progtype {
             elf::types::PT_LOAD => {
@@ -171,8 +181,14 @@ fn elf_to_tbf<W: Write>(
                     // address will be at 0x00000000. Otherwise, we interpret
                     // this to mean that the binary was compiled for a fixed
                     // address in RAM.
-                    if segment.vaddr != 0x00000000 {
-                        fixed_address_ram = Some(segment.vaddr as u32);
+                    if segment.vaddr == 0x00000000 {
+                        fixed_address_ram_pic = true;
+                    } else {
+                        fixed_address_ram = if let Some(prev_addr) = fixed_address_ram {
+                            Some(cmp::min(prev_addr, segment.vaddr as u32))
+                        } else {
+                            Some(segment.vaddr as u32)
+                        }
                     }
                 } else if segment.flags.0
                     == elf::types::PF_W.0 + elf::types::PF_R.0 + elf::types::PF_X.0
@@ -182,14 +198,28 @@ fn elf_to_tbf<W: Write>(
                     // virtual address will be at 0x80000000. Otherwise, we
                     // interpret this to mean that the binary was compiled for a
                     // fixed address in flash.
-                    if segment.vaddr != 0x80000000 {
-                        fixed_address_flash = Some(segment.vaddr as u32);
+                    if segment.vaddr == 0x80000000 {
+                        fixed_address_flash_pic = true;
+                    } else {
+                        fixed_address_flash = if let Some(prev_addr) = fixed_address_flash {
+                            Some(cmp::min(prev_addr, segment.vaddr as u32))
+                        } else {
+                            Some(segment.vaddr as u32)
+                        }
                     }
                 }
             }
 
             _ => {}
         }
+    }
+    // Use the flags to see if we got PIC sections, and clear any other fixed
+    // addresses we may have found.
+    if fixed_address_flash_pic {
+        fixed_address_flash = None;
+    }
+    if fixed_address_ram_pic {
+        fixed_address_ram = None;
     }
 
     // Need an array of sections to look for relocation data to include.
