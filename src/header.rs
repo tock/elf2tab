@@ -14,6 +14,7 @@ enum TbfHeaderTypes {
     WriteableFlashRegions = 2,
     PackageName = 3,
     PicOption1 = 4,
+    FixedAddresses = 5,
 }
 
 #[repr(C)]
@@ -48,6 +49,14 @@ struct TbfHeaderWriteableFlashRegion {
     base: TbfHeaderTlv,
     offset: u32,
     size: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+struct TbfHeaderFixedAddresses {
+    base: TbfHeaderTlv,
+    start_process_ram: u32,
+    start_process_flash: u32,
 }
 
 impl fmt::Display for TbfHeaderBase {
@@ -90,11 +99,24 @@ impl fmt::Display for TbfHeaderWriteableFlashRegion {
     }
 }
 
+impl fmt::Display for TbfHeaderFixedAddresses {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(
+            f,
+            "
+     start_process_ram: {0:>8} {0:>#10X}
+   start_process_flash: {1:>8} {1:>#10X}",
+            self.start_process_ram, self.start_process_flash,
+        )
+    }
+}
+
 pub struct TbfHeader {
     hdr_base: TbfHeaderBase,
     hdr_main: TbfHeaderMain,
     hdr_pkg_name_tlv: Option<TbfHeaderTlv>,
     hdr_wfr: Vec<TbfHeaderWriteableFlashRegion>,
+    hdr_fixed_addresses: Option<TbfHeaderFixedAddresses>,
     package_name: String,
     package_name_pad: usize,
 }
@@ -121,6 +143,7 @@ impl TbfHeader {
             },
             hdr_pkg_name_tlv: None,
             hdr_wfr: Vec::new(),
+            hdr_fixed_addresses: None,
             package_name: String::new(),
             package_name_pad: 0,
         }
@@ -138,6 +161,8 @@ impl TbfHeader {
         minimum_ram_size: u32,
         writeable_flash_regions: usize,
         package_name: String,
+        fixed_address_ram: Option<u32>,
+        fixed_address_flash: Option<u32>,
     ) -> usize {
         // Need to calculate lengths ahead of time.
         // Need the base and the main section.
@@ -158,6 +183,13 @@ impl TbfHeader {
 
         // Add room for the writeable flash regions header TLV.
         header_length += mem::size_of::<TbfHeaderWriteableFlashRegion>() * writeable_flash_regions;
+
+        // Check if we are going to include the fixed address header. If so, we
+        // need to make sure we include it in the length. If either address is
+        // set we need to include the entire header.
+        if fixed_address_ram.is_some() || fixed_address_flash.is_some() {
+            header_length += mem::size_of::<TbfHeaderFixedAddresses>();
+        }
 
         // Flags default to app is enabled.
         let flags = 0x0000_0001;
@@ -185,6 +217,18 @@ impl TbfHeader {
                 },
                 offset: 0,
                 size: 0,
+            });
+        }
+
+        // If at least one RAM of flash address is fixed, include the header.
+        if fixed_address_ram.is_some() || fixed_address_flash.is_some() {
+            self.hdr_fixed_addresses = Some(TbfHeaderFixedAddresses {
+                base: TbfHeaderTlv {
+                    tipe: TbfHeaderTypes::FixedAddresses,
+                    length: 8,
+                },
+                start_process_ram: fixed_address_ram.unwrap_or(0xFFFFFFFF),
+                start_process_flash: fixed_address_flash.unwrap_or(0xFFFFFFFF),
             });
         }
 
@@ -240,6 +284,11 @@ impl TbfHeader {
         // Put all writeable flash region header elements in.
         for wfr in &self.hdr_wfr {
             header_buf.write_all(unsafe { util::as_byte_slice(wfr) })?;
+        }
+
+        // If there are fixed addresses, include that TLV.
+        if self.hdr_fixed_addresses.is_some() {
+            header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_fixed_addresses) })?;
         }
 
         let current_length = header_buf.get_ref().len();
