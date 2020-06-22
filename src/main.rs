@@ -101,8 +101,9 @@ fn main() {
 /// length parameter first.
 ///
 /// Assumptions:
-/// - Sections in a segment that is RW and set to be loaded will be in RAM and
-///   should count towards minimum required RAM.
+/// - Any segments that are writable and set to be loaded into flash but with a
+///   different virtual address will be in RAM and should count towards minimum
+///   required RAM.
 /// - Sections that are writeable flash regions include .wfr in their name.
 fn elf_to_tbf<W: Write>(
     input: &elf::File,
@@ -127,19 +128,28 @@ fn elf_to_tbf<W: Write>(
     // Keep track of how much RAM this app will need.
     let mut minimum_ram_size: u32 = 0;
 
-    // Find the ELF segment for the RAM segment. That will tell us how much
-    // RAM we need to reserve for when those are copied into memory.
+    // Find all segments destined for the RAM section that are stored in flash.
+    // These are set in the linker file to consume memory, and we need to
+    // account for them when we set the minimum amount of memory this app
+    // requires.
     for segment in &input.phdrs {
+        // To filter, we need segments that are:
+        // - Set to be LOADed.
+        // - Have different virtual and physical addresses, meaning they are
+        //   loaded into flash but actually reside in memory.
+        // - Are not zero size in memory.
+        // - Are writable (RAM should be writable).
         if segment.progtype == elf::types::PT_LOAD
-            && segment.flags.0 == elf::types::PF_W.0 + elf::types::PF_R.0
+            && segment.vaddr != segment.paddr
+            && segment.memsz > 0
+            && ((segment.flags.0 & elf::types::PF_W.0) > 0)
         {
-            minimum_ram_size = segment.memsz as u32;
-            break;
+            minimum_ram_size += segment.memsz as u32;
         }
     }
     if verbose {
         println!(
-            "Min RAM size from sections in ELF: {} bytes",
+            "Min RAM size from segments in ELF: {} bytes",
             minimum_ram_size
         );
     }
@@ -151,48 +161,76 @@ fn elf_to_tbf<W: Write>(
 
     // Check for fixed addresses.
     //
-    // We do this by looking at segments in the ELF, and seeing if the virtual
-    // addresses match what expect for Tock PIC, or if they seem to be specific
-    // fixed addresses that the app was compiled for. This is complicated
-    // because there might be multiple segments for flash or RAM, even if the
-    // app is compiled for PIC.
+    // We do this with different mechanisms for flash and ram. For flash, we
+    // look at loadable segments in the ELF, and find the segment with the
+    // lowest address that is both executable and non-zero in file size. Since
+    // this is a segment that must be loaded to execute the application, we know
+    // that this must be a flash address.
     //
-    // We use the following algorithm:
-    // - If there is a segment that matches the PIC address we expect, then we
-    //   assume the app is PIC, and we do not include the matching fixed address
-    //   address.
-    // - Otherwise, we use the lowest address that we find as the fixed address.
+    // For RAM, we can't quite use the ELF file in the same way as with flash.
+    // Since nothing _actually_ has to be loaded into RAM, the ELF file does not
+    // have to keep track of the first address in RAM. Further, Tock apps
+    // typically put a .stack section at the beginning of RAM, and the stack is
+    // just a memory holder and doesn't contain any actual data. The start of
+    // RAM address will almost certainly exist somewhere in the ELF, but
+    // reliably extracting it from different ELFs linked with different
+    // toolchains from different linker scripts would I think require resorting
+    // to a bit of heuristics and guessing. To avoid the potential issues there,
+    // we instead require that a `_SRAM_ORIGIN` symbol be present to explicitly
+    // mark the start of RAM.
+    //
+    // In both cases we check to see if the address matches our expected PIC
+    // addresses:
+    // - RAM: 0x00000000
+    // - flash: 0x80000000
+    //
+    // These addresses are a Tock convention and enables PIC fixups to be done
+    // by the app when it first starts. If for some reason an app is PIC and
+    // wants to use different dummy PIC addresses, then this logic will have to
+    // be updated.
     let mut fixed_address_flash: Option<u32> = None;
     let mut fixed_address_ram: Option<u32> = None;
     let mut fixed_address_flash_pic: bool = false;
-    let mut fixed_address_ram_pic: bool = false;
+
+    /// Helper function to determine if any nonzero length section is inside a
+    /// given segment.
+    ///
+    /// This is necessary because we sometimes run into loadable segments that
+    /// shouldn't really exist (they are at addresses outside of what was
+    /// specified in the linker script), and we want to be able to skip them.
+    fn section_exists_in_segment(input: &elf::File, segment: &elf::types::ProgramHeader) -> bool {
+        let segment_start = segment.offset as u32;
+        let segment_size = segment.filesz as u32;
+        let segment_end = segment_start + segment_size;
+
+        for section in input.sections.iter() {
+            let section_start = section.shdr.offset as u32;
+            let section_size = section.shdr.size as u32;
+            let section_end = section_start + section_size;
+
+            if section_start >= segment_start && section_end <= segment_end && section_size > 0 {
+                return true;
+            }
+        }
+        false
+    }
+
+    // Do flash address.
     for segment in &input.phdrs {
         match segment.progtype {
             elf::types::PT_LOAD => {
-                // Look for segments based on their flags.
-                if segment.flags.0 == elf::types::PF_W.0 + elf::types::PF_R.0 {
-                    // Read and Write. This implies this segment is the RAM
-                    // section. If this is standard Tock PIC, then this virtual
-                    // address will be at 0x00000000. Otherwise, we interpret
-                    // this to mean that the binary was compiled for a fixed
-                    // address in RAM.
-                    if segment.vaddr == 0x00000000 {
-                        fixed_address_ram_pic = true;
-                    } else {
-                        fixed_address_ram = if let Some(prev_addr) = fixed_address_ram {
-                            Some(cmp::min(prev_addr, segment.vaddr as u32))
-                        } else {
-                            Some(segment.vaddr as u32)
-                        }
-                    }
-                } else if segment.flags.0
-                    == elf::types::PF_W.0 + elf::types::PF_R.0 + elf::types::PF_X.0
+                // Look for segments based on their flags, size, and whether
+                // they actually contain any valid sections. Flash segments have
+                // to be marked executable, and we only care about segments that
+                // actually contain data to be loaded into flash.
+                if (segment.flags.0 & elf::types::PF_X.0) > 0
+                    && segment.filesz > 0
+                    && section_exists_in_segment(input, segment)
                 {
-                    // Read, Write, and Execute. This implies the section is the
-                    // flash segment. If this is standard Tock PIC, then this
-                    // virtual address will be at 0x80000000. Otherwise, we
-                    // interpret this to mean that the binary was compiled for a
-                    // fixed address in flash.
+                    // If this is standard Tock PIC, then this virtual address
+                    // will be at 0x80000000. Otherwise, we interpret this to
+                    // mean that the binary was compiled for a fixed address in
+                    // flash.
                     if segment.vaddr == 0x80000000 {
                         fixed_address_flash_pic = true;
                     } else {
@@ -213,9 +251,27 @@ fn elf_to_tbf<W: Write>(
     if fixed_address_flash_pic {
         fixed_address_flash = None;
     }
-    if fixed_address_ram_pic {
-        fixed_address_ram = None;
-    }
+
+    // Do RAM address.
+    // Get all symbols in the symbol table section if it exists.
+    let section_symtab = input.sections.iter().find(|s| s.shdr.name == ".symtab");
+    section_symtab.map(|s_symtab| {
+        let symbols = input.get_symbols(s_symtab);
+        symbols.ok().map(|syms| {
+            // We are looking for the `_SRAM_ORIGIN` symbol and its value.
+            // If it exists, we try to use it. Otherwise, we just do not try
+            // to find a fixed RAM address.
+            let sram_origin_symbol = syms.iter().find(|sy| sy.name == "_SRAM_ORIGIN");
+            sram_origin_symbol.map(|sram_origin| {
+                let sram_origin_address = sram_origin.value as u32;
+                // If address does not match our dummy address for PIC, then we
+                // say this app has a fixed address for memory.
+                if sram_origin_address != 0x00000000 {
+                    fixed_address_ram = Some(sram_origin_address);
+                }
+            });
+        });
+    });
 
     // Need an array of sections to look for relocation data to include.
     let mut rel_sections: Vec<String> = Vec::new();

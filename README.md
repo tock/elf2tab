@@ -103,6 +103,14 @@ writeable flash regions, the name of the section should include the string
 their relative address offset included in the TBF header via the
 `TbfHeaderWriteableFlashRegions` TLV.
 
+elf2tab will also automatically add a TBF "fixed addresses" TLV header if it
+finds that the .elf file was compiled for a fixed address in RAM or flash
+instead of being position independent. To detect a fixed flash address, elf2tab
+looks to see if the flash segment is at the dummy flash address for PIC apps or
+not. To detect a fixed RAM address, elf2tab looks for a `_SRAM_ORIGIN` symbol,
+and checks if the address matches the dummy RAM address for PIC apps or not.
+
+
 ### Creating the TAB file
 
 After generating the program binary and TBF header for each .elf file specified
