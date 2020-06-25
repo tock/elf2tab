@@ -176,7 +176,7 @@ fn elf_to_tbf<W: Write>(
     // reliably extracting it from different ELFs linked with different
     // toolchains from different linker scripts would I think require resorting
     // to a bit of heuristics and guessing. To avoid the potential issues there,
-    // we instead require that a `_SRAM_ORIGIN` symbol be present to explicitly
+    // we instead require that a `_sram_origin` symbol be present to explicitly
     // mark the start of RAM.
     //
     // In both cases we check to see if the address matches our expected PIC
@@ -258,10 +258,10 @@ fn elf_to_tbf<W: Write>(
     section_symtab.map(|s_symtab| {
         let symbols = input.get_symbols(s_symtab);
         symbols.ok().map(|syms| {
-            // We are looking for the `_SRAM_ORIGIN` symbol and its value.
+            // We are looking for the `_sram_origin` symbol and its value.
             // If it exists, we try to use it. Otherwise, we just do not try
             // to find a fixed RAM address.
-            let sram_origin_symbol = syms.iter().find(|sy| sy.name == "_SRAM_ORIGIN");
+            let sram_origin_symbol = syms.iter().find(|sy| sy.name == "_sram_origin");
             sram_origin_symbol.map(|sram_origin| {
                 let sram_origin_address = sram_origin.value as u32;
                 // If address does not match our dummy address for PIC, then we

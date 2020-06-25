@@ -107,7 +107,7 @@ elf2tab will also automatically add a TBF "fixed addresses" TLV header if it
 finds that the .elf file was compiled for a fixed address in RAM or flash
 instead of being position independent. To detect a fixed flash address, elf2tab
 looks to see if the flash segment is at the dummy flash address for PIC apps or
-not. To detect a fixed RAM address, elf2tab looks for a `_SRAM_ORIGIN` symbol,
+not. To detect a fixed RAM address, elf2tab looks for a `_sram_origin` symbol,
 and checks if the address matches the dummy RAM address for PIC apps or not.
 
 
@@ -127,5 +127,4 @@ Inspecting TABs
 Tockloader can show some details of a .tab file. Simply:
 
     $ tockloader inspect-tab <tab file name>
-
 
