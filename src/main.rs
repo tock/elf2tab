@@ -341,7 +341,59 @@ fn elf_to_tbf<W: Write>(
 
             fixed_protected_region_size
         } else {
-            header_length as u32
+            // The protected region was not specified on the command line.
+            // Normally, we default to an additional size of 0 for the protected
+            // region beyond the header. However, if we are _not_ doing PIC, we
+            // might want to choose a nonzero sized protected region. Without
+            // PIC, the application binary must be at specific address. In
+            // addition, boards have a fixed address where they start looking
+            // for applications. To make both of those addresses match, we can
+            // expand the protected region.
+            //
+            // |----------------------|-------------------|---------------------
+            // | TBF Header           | Protected Region  | Application Binary
+            // |----------------------|-------------------|---------------------
+            // ^                                ^         ^
+            // |                                |         |-- Fixed binary address
+            // |-- Start of apps address        |-- Flexible size
+            //
+            // However, we don't actually know the start of apps address.
+            // Additionally, an app may be positioned after another app in
+            // flash, and so the start address is actually the start of apps
+            // address plus the size of the first app. Tockloader when it goes
+            // to actually load the app can check for these addresses and expand
+            // the protected region as needed. But, in some cases it is easier
+            // to just be able to flash the TBF directly onto the board without
+            // needing Tockloader. So, we at least try to pick a reasonable
+            // protected size in the non-PIC case to give the TBF a chance of
+            // working as created.
+            //
+            // So, we put the start address of the TBF header at an alignment of
+            // 256 if the application binary is at the expected address.
+            if !fixed_address_flash_pic {
+                // Non-PIC case. As a reasonable guess we try to get our TBF
+                // start address to be at a 256 byte alignment.
+                let app_binary_address = fixed_address_flash.unwrap_or(0); // Already checked for `None`.
+                let tbf_start_address = util::align_down(app_binary_address, 256);
+                let protected_region_size = app_binary_address - tbf_start_address;
+                if protected_region_size > header_length as u32 {
+                    // We do want to set the protected size past the header to
+                    // something nonzero.
+                    if verbose {
+                        println!(
+                            "Inserting nonzero protected region of length: {} bytes",
+                            protected_region_size - header_length as u32
+                        );
+                    }
+                    tbfheader.set_protected_size(protected_region_size - header_length as u32);
+                    protected_region_size
+                } else {
+                    header_length as u32
+                }
+            } else {
+                // Normal PIC case, no need to insert extra protected region.
+                header_length as u32
+            }
         };
     binary_index += protected_region_size as usize;
 
