@@ -68,6 +68,9 @@ fn main() {
             .unwrap();
 
         // Do the conversion to a tock binary.
+        if opt.verbose {
+            println!("Creating {:?}", tbf_path);
+        }
         elf_to_tbf(
             &elffile,
             &mut outfile,
@@ -79,6 +82,9 @@ fn main() {
             opt.protected_region_size,
         )
         .unwrap();
+        if opt.verbose {
+            println!("");
+        }
 
         // Add the file to the TAB tar file.
         outfile.seek(io::SeekFrom::Start(0)).unwrap();
