@@ -8,6 +8,11 @@ pub fn align_to(value: u32, box_size: u32) -> u32 {
     value + ((box_size - (value % box_size)) % box_size)
 }
 
+/// Takes a value and rounds it down to be aligned % box_size
+pub fn align_down(value: u32, box_size: u32) -> u32 {
+    value - (value % box_size)
+}
+
 /// How much needs to be added to get a value aligned % 4
 pub fn amount_alignment_needed(value: u32, box_size: u32) -> u32 {
     align_to(value, box_size) - value
