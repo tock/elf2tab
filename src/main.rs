@@ -282,6 +282,11 @@ fn elf_to_tbf<W: Write>(
     // Need an array of sections to look for relocation data to include.
     let mut rel_sections: Vec<String> = Vec::new();
 
+    // if this is an x86 linux binary, add the text section
+    if input.ehdr.machine == elf::types::EM_X86_64 || input.ehdr.machine == elf::types::EM_386 {
+        rel_sections.push(".text".to_string());
+    }
+
     // Iterate the sections in the ELF file to find properties of the app that
     // are required to go in the TBF header.
     let mut writeable_flash_regions_count = 0;
@@ -483,10 +488,16 @@ fn elf_to_tbf<W: Write>(
     // For each section that might have relocation data, check if a .rel.X
     // section exists and if so include it.
     if verbose {
-        println!("Searching for .rel.X sections to add.");
+        if input.ehdr.machine == elf::types::EM_X86_64 || input.ehdr.machine == elf::types::EM_386 {
+            println!("Searching for .rela.X sections to add.");
+        }
+        else
+        {
+            println!("Searching for .rel.X sections to add.");
+        }
     }
     for relocation_section_name in &rel_sections {
-        let mut name: String = ".rel".to_owned();
+        let mut name: String = if input.ehdr.machine == elf::types::EM_X86_64 || input.ehdr.machine == elf::types::EM_386 { ".rela" } else { ".rel" }.to_owned();
         name.push_str(relocation_section_name);
 
         let rel_data = input
