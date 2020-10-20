@@ -88,6 +88,13 @@ pub struct Opt {
         help = "Size of the protected region (including headers)"
     )]
     pub protected_region_size: Option<u32>,
+
+    #[structopt(
+        long = "app-id",
+        name = "app-id",
+        help = "Unique ID for the app header"
+    )]
+    pub app_id: Option<u32>,
 }
 
 mod test {

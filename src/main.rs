@@ -19,6 +19,8 @@ fn main() {
         .as_ref()
         .map_or("", |package_name| package_name.as_str());
 
+    let app_id = opt.app_id.as_ref().map_or(None, |id| Some(*id));
+
     // Create the metadata.toml file needed for the TAB file.
     let mut metadata_toml = String::new();
     writeln!(&mut metadata_toml, "tab-version = 1").unwrap();
@@ -80,6 +82,7 @@ fn main() {
             opt.app_heap_size,
             opt.kernel_heap_size,
             opt.protected_region_size,
+            app_id,
         )
         .unwrap();
         if opt.verbose {
@@ -120,6 +123,7 @@ fn elf_to_tbf<W: Write>(
     app_heap_len: u32,
     kernel_heap_len: u32,
     protected_region_size_arg: Option<u32>,
+    app_id: Option<u32>,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -320,6 +324,7 @@ fn elf_to_tbf<W: Write>(
         package_name,
         fixed_address_ram,
         fixed_address_flash,
+        app_id,
     );
     // If a protected region size was passed, confirm the header will fit.
     // Otherwise, use the header size as the protected region size.

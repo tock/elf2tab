@@ -1,4 +1,5 @@
 use crate::util;
+use sha3::{Digest, Sha3_256};
 use std::fmt;
 use std::io;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -41,6 +42,7 @@ struct TbfHeaderMain {
     init_fn_offset: u32,
     protected_size: u32,
     minimum_ram_size: u32,
+    app_id: u32,
 }
 
 #[repr(C)]
@@ -78,10 +80,11 @@ impl fmt::Display for TbfHeaderMain {
         writeln!(
             f,
             "
-        init_fn_offset: {0:>8} {0:>#10X}
-        protected_size: {1:>8} {1:>#10X}
-      minimum_ram_size: {2:>8} {2:>#10X}",
-            self.init_fn_offset, self.protected_size, self.minimum_ram_size,
+        init_fn_offset: {0:>9} {0:>#10X}
+        protected_size: {1:>9} {1:>#10X}
+      minimum_ram_size: {2:>9} {2:>#10X}
+                app_id: {3:>9} {3:>#8X}",
+            self.init_fn_offset, self.protected_size, self.minimum_ram_size, self.app_id
         )
     }
 }
@@ -140,6 +143,7 @@ impl TbfHeader {
                 init_fn_offset: 0,
                 protected_size: 0,
                 minimum_ram_size: 0,
+                app_id: 0,
             },
             hdr_pkg_name_tlv: None,
             hdr_wfr: Vec::new(),
@@ -163,7 +167,11 @@ impl TbfHeader {
         package_name: String,
         fixed_address_ram: Option<u32>,
         fixed_address_flash: Option<u32>,
+        app_id: Option<u32>,
     ) -> usize {
+        // Create a hasher, this is used for the default AppID
+        let mut hasher = Sha3_256::new();
+
         // Need to calculate lengths ahead of time.
         // Need the base and the main section.
         let mut header_length = mem::size_of::<TbfHeaderBase>() + mem::size_of::<TbfHeaderMain>();
@@ -206,6 +214,18 @@ impl TbfHeader {
                 tipe: TbfHeaderTypes::PackageName,
                 length: self.package_name.len() as u16,
             });
+            hasher.update(self.package_name.clone());
+        }
+
+        // Generate an AppID from the package name
+        if app_id.is_none() {
+            let hash = hasher.finalize();
+            self.hdr_main.app_id = hash[0] as u32
+                | (hash[1] as u32) << 8
+                | (hash[2] as u32) << 16
+                | (hash[3] as u32) << 24;
+        } else {
+            self.hdr_main.app_id = app_id.unwrap();
         }
 
         // If there is an app state region, start setting up that header.
