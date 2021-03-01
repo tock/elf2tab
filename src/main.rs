@@ -14,6 +14,7 @@ mod util;
 fn main() {
     let opt = cmdline::Opt::from_args();
 
+    // Get app name from command line arguments or use empty string as default.
     let package_name = opt
         .package_name
         .as_ref()
@@ -21,9 +22,30 @@ fn main() {
 
     // Create the metadata.toml file needed for the TAB file.
     let mut metadata_toml = String::new();
+    // TAB version is currently "1". This defines the general format, but
+    // key-value pairs can be added (or removed) and still be version 1.
     writeln!(&mut metadata_toml, "tab-version = 1").unwrap();
+    // Name is always set by elf2tab (even if it is empty).
     writeln!(&mut metadata_toml, "name = \"{}\"", package_name).unwrap();
-    writeln!(&mut metadata_toml, "only-for-boards = \"\"").unwrap();
+    // Include "only-for-boards" key if specific boards were specified.
+    opt.supported_boards.as_ref().map(|supported_boards| {
+        writeln!(
+            &mut metadata_toml,
+            "only-for-boards = \"{}\"",
+            supported_boards.as_str()
+        )
+        .unwrap();
+    });
+    // Include "tock-kernel-version" key if a necessary version was specified.
+    opt.tock_kernel_version.as_ref().map(|tock_kernel_version| {
+        writeln!(
+            &mut metadata_toml,
+            "tock-kernel-version = \"{}\"",
+            tock_kernel_version.as_str()
+        )
+        .unwrap();
+    });
+    // Add build-date metadata unless a deterministic build is desired.
     if !opt.deterministic {
         let build_date = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
         writeln!(&mut metadata_toml, "build-date = {}", build_date).unwrap();

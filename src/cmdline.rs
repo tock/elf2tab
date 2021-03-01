@@ -88,6 +88,20 @@ pub struct Opt {
         help = "Size of the protected region (including headers)"
     )]
     pub protected_region_size: Option<u32>,
+
+    #[structopt(
+        long = "supported-boards",
+        name = "supported-boards",
+        help = "comma separated list of boards this app is compatible with"
+    )]
+    pub supported_boards: Option<String>,
+
+    #[structopt(
+        long = "tock-kernel-version",
+        name = "tock-kernel-version",
+        help = "major version number of Tock kernel this app expects"
+    )]
+    pub tock_kernel_version: Option<String>,
 }
 
 mod test {
