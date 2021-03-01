@@ -172,6 +172,13 @@ pub struct Opt {
         help = "The minimum kernel minor version that the app requires"
     )]
     pub kernel_minor: Option<u16>,
+
+    #[structopt(
+        long = "supported-boards",
+        name = "supported-boards",
+        help = "comma separated list of boards this app is compatible with"
+    )]
+    pub supported_boards: Option<String>,
 }
 
 mod test {
