@@ -80,6 +80,7 @@ fn main() {
             opt.app_heap_size,
             opt.kernel_heap_size,
             opt.protected_region_size,
+            opt.permissions.to_vec(),
         )
         .unwrap();
         if opt.verbose {
@@ -120,6 +121,7 @@ fn elf_to_tbf<W: Write>(
     app_heap_len: u32,
     kernel_heap_len: u32,
     protected_region_size_arg: Option<u32>,
+    permissions: Vec<(u32, u32)>,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -320,6 +322,7 @@ fn elf_to_tbf<W: Write>(
         package_name,
         fixed_address_ram,
         fixed_address_flash,
+        permissions,
     );
     // If a protected region size was passed, confirm the header will fit.
     // Otherwise, use the header size as the protected region size.
