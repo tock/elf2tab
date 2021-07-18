@@ -88,6 +88,21 @@ pub struct Opt {
         help = "Size of the protected region (including headers)"
     )]
     pub protected_region_size: Option<u32>,
+
+    #[structopt(
+        long = "kernel-major",
+        name = "kernel-major-version",
+        help = "The kernel version that the app requires"
+    )]
+    pub kernel_major: Option<u16>,
+
+    #[structopt(
+        long = "kernel-minor",
+        name = "kernel-minor-version",
+        requires = "kernel-major-version",
+        help = "The minimum kernel minor version that the app requires"
+    )]
+    pub kernel_minor: Option<u16>,
 }
 
 mod test {
