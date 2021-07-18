@@ -16,6 +16,7 @@ enum TbfHeaderTypes {
     PicOption1 = 4,
     FixedAddresses = 5,
     Permissions = 6,
+    KernelVersion = 7,
 }
 
 #[repr(C)]
@@ -74,6 +75,14 @@ struct TbfHeaderPermissions {
     base: TbfHeaderTlv,
     array_length: u16,
     perms: Vec<TbfHeaderDriverPermission>,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct TbfHeaderKernelVersion {
+    base: TbfHeaderTlv,
+    major: u16,
+    minor: u16,
 }
 
 impl fmt::Display for TbfHeaderBase {
@@ -149,6 +158,18 @@ impl fmt::Display for TbfHeaderPermissions {
     }
 }
 
+impl fmt::Display for TbfHeaderKernelVersion {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // ^x.y means >= x.y, < (x+1).0
+        writeln!(
+            f,
+            "
+    kernel version: ^{}.{}",
+            self.major, self.minor
+        )
+    }
+}
+
 pub struct TbfHeader {
     hdr_base: TbfHeaderBase,
     hdr_main: TbfHeaderMain,
@@ -156,6 +177,7 @@ pub struct TbfHeader {
     hdr_wfr: Vec<TbfHeaderWriteableFlashRegion>,
     hdr_fixed_addresses: Option<TbfHeaderFixedAddresses>,
     hdr_permissions: Option<TbfHeaderPermissions>,
+    hdr_kernel_version: Option<TbfHeaderKernelVersion>,
     package_name: String,
     package_name_pad: usize,
 }
@@ -184,6 +206,7 @@ impl TbfHeader {
             hdr_wfr: Vec::new(),
             hdr_fixed_addresses: None,
             hdr_permissions: None,
+            hdr_kernel_version: None,
             package_name: String::new(),
             package_name_pad: 0,
         }
@@ -204,6 +227,7 @@ impl TbfHeader {
         fixed_address_ram: Option<u32>,
         fixed_address_flash: Option<u32>,
         permissions: Vec<(u32, u32)>,
+        kernel_version: Option<(u16, u16)>,
     ) -> usize {
         // Need to calculate lengths ahead of time.
         // Need the base and the main section.
@@ -230,6 +254,11 @@ impl TbfHeader {
         // set we need to include the entire header.
         if fixed_address_ram.is_some() || fixed_address_flash.is_some() {
             header_length += mem::size_of::<TbfHeaderFixedAddresses>();
+        }
+
+        // Check if we have to include a kernel version header.
+        if kernel_version.is_some() {
+            header_length += mem::size_of::<TbfHeaderKernelVersion>();
         }
 
         // Flags default to app is enabled.
@@ -303,6 +332,18 @@ impl TbfHeader {
                 },
                 array_length: perms.len() as u16,
                 perms,
+            }
+        }
+
+        // If the kernel version is set, we have to include the header.
+        if let Some((kernel_major, kernel_minor)) = kernel_version {
+            self.hdr_kernel_version = Some(TbfHeaderKernelVersion {
+                base: TbfHeaderTlv {
+                    tipe: TbfHeaderTypes::KernelVersion,
+                    length: 4,
+                },
+                major: kernel_major,
+                minor: kernel_minor,
             });
         }
 
@@ -365,6 +406,11 @@ impl TbfHeader {
             header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_fixed_addresses) })?;
         }
 
+        // If the kernel version is set, include that TLV
+        if self.hdr_kernel_version.is_some() {
+            header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_kernel_version) })?;
+        }
+
         let current_length = header_buf.get_ref().len();
         util::do_pad(
             &mut header_buf,
@@ -423,7 +469,8 @@ impl fmt::Display for TbfHeader {
         self.hdr_fixed_addresses
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         self.hdr_permissions
-            .as_ref()
+            .as_ref().map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
+        self.hdr_kernel_version
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         Ok(())
     }

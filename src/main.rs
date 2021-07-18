@@ -81,6 +81,13 @@ fn main() {
             opt.kernel_heap_size,
             opt.protected_region_size,
             opt.permissions.to_vec(),
+            // If kernel_major is set, the app requires kernel ^kernel_major.0 (>= kernel_major.0, < (kernel_major+1).0)
+            // Optionally, kernel_minor can be set, making the app require ^kernel_major.kernel_minor
+            // (>= kernel_major.kernel_minor, < (kernel_major+1).0)
+            match opt.kernel_major {
+                Some(major) => Some((major, opt.kernel_minor.unwrap_or(0))),
+                None => None,
+            },
         )
         .unwrap();
         if opt.verbose {
@@ -122,6 +129,7 @@ fn elf_to_tbf<W: Write>(
     kernel_heap_len: u32,
     protected_region_size_arg: Option<u32>,
     permissions: Vec<(u32, u32)>,
+    kernel_version: Option<(u16, u16)>,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -310,6 +318,12 @@ fn elf_to_tbf<W: Write>(
         );
     }
 
+    if verbose {
+        if let Some((major, minor)) = kernel_version {
+            println!("Kernel version: {}.{}", major, minor);
+        }
+    }
+
     // Keep track of an index of where we are in creating the app binary.
     let mut binary_index = 0;
 
@@ -323,6 +337,7 @@ fn elf_to_tbf<W: Write>(
         fixed_address_ram,
         fixed_address_flash,
         permissions,
+        kernel_version,
     );
     // If a protected region size was passed, confirm the header will fit.
     // Otherwise, use the header size as the protected region size.
