@@ -15,6 +15,7 @@ enum TbfHeaderTypes {
     PackageName = 3,
     PicOption1 = 4,
     FixedAddresses = 5,
+    Permissions = 6,
 }
 
 #[repr(C)]
@@ -57,6 +58,22 @@ struct TbfHeaderFixedAddresses {
     base: TbfHeaderTlv,
     start_process_ram: u32,
     start_process_flash: u32,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+struct TbfHeaderDriverPermission {
+    driver_number: u32,
+    offset: u32,
+    allowed_commands: u64,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct TbfHeaderPermissions {
+    base: TbfHeaderTlv,
+    array_length: u16,
+    perms: Vec<TbfHeaderDriverPermission>,
 }
 
 impl fmt::Display for TbfHeaderBase {
@@ -111,12 +128,34 @@ impl fmt::Display for TbfHeaderFixedAddresses {
     }
 }
 
+impl fmt::Display for TbfHeaderPermissions {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(
+            f,
+            "
+          array_length: {0:>8} {0:>#8}
+           permissions:   Number   Offset  Allowed Bit Mask",
+            self.array_length,
+        )?;
+
+        for perm in &self.perms {
+            writeln!(
+                f,
+                "                      : {0:>#8X} {1:>#8} {2:>#17X}",
+                perm.driver_number, perm.offset, perm.allowed_commands,
+            )?;
+        }
+        Ok(())
+    }
+}
+
 pub struct TbfHeader {
     hdr_base: TbfHeaderBase,
     hdr_main: TbfHeaderMain,
     hdr_pkg_name_tlv: Option<TbfHeaderTlv>,
     hdr_wfr: Vec<TbfHeaderWriteableFlashRegion>,
     hdr_fixed_addresses: Option<TbfHeaderFixedAddresses>,
+    hdr_permissions: Option<TbfHeaderPermissions>,
     package_name: String,
     package_name_pad: usize,
 }
@@ -144,6 +183,7 @@ impl TbfHeader {
             hdr_pkg_name_tlv: None,
             hdr_wfr: Vec::new(),
             hdr_fixed_addresses: None,
+            hdr_permissions: None,
             package_name: String::new(),
             package_name_pad: 0,
         }
@@ -163,6 +203,7 @@ impl TbfHeader {
         package_name: String,
         fixed_address_ram: Option<u32>,
         fixed_address_flash: Option<u32>,
+        permissions: Vec<(u32, u32)>,
     ) -> usize {
         // Need to calculate lengths ahead of time.
         // Need the base and the main section.
@@ -229,6 +270,39 @@ impl TbfHeader {
                 },
                 start_process_ram: fixed_address_ram.unwrap_or(0xFFFFFFFF),
                 start_process_flash: fixed_address_flash.unwrap_or(0xFFFFFFFF),
+            });
+        }
+
+        let mut perms: Vec<TbfHeaderDriverPermission> = Vec::new();
+        for perm in permissions {
+            let offset = perm.1 / 64;
+            let allowed_command = 1 << (perm.1 % 64);
+            let mut complete = false;
+
+            for p in &mut perms {
+                if p.driver_number == perm.0 && p.offset == offset {
+                    p.allowed_commands |= allowed_command;
+                    complete = true;
+                }
+            }
+
+            if !complete {
+                perms.push(TbfHeaderDriverPermission {
+                    driver_number: perm.0,
+                    offset: perm.1 / 64,
+                    allowed_commands: allowed_command,
+                })
+            }
+        }
+
+        if perms.len() > 0 {
+            self.hdr_permissions = Some(TbfHeaderPermissions {
+                base: TbfHeaderTlv {
+                    tipe: TbfHeaderTypes::Permissions,
+                    length: 8,
+                },
+                array_length: perms.len() as u16,
+                perms,
             });
         }
 
@@ -347,6 +421,9 @@ impl fmt::Display for TbfHeader {
             write!(f, "{}", wfr)?;
         }
         self.hdr_fixed_addresses
+            .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
+        self.hdr_permissions
+            .as_ref()
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         Ok(())
     }

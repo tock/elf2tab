@@ -1,12 +1,25 @@
 //! Command line parser setup for elf2tab.
 
+use std::error::Error;
 use std::path::PathBuf;
-
 use structopt::StructOpt;
 
 fn usage() -> &'static str {
     "elf2tab [FLAGS] [OPTIONS] ELF...
 Converts Tock userspace programs from .elf files to Tock Application Bundles."
+}
+
+fn parse_perms<T, U>(s: &str) -> Result<(T, U), Box<dyn Error>>
+where
+    T: std::str::FromStr,
+    T::Err: Error + 'static,
+    U: std::str::FromStr,
+    U::Err: Error + 'static,
+{
+    let pos = s
+        .find(',')
+        .ok_or_else(|| format!("invalid number,option: no `,` found in `{}`", s))?;
+    Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
 }
 
 #[derive(StructOpt, Debug)]
@@ -88,6 +101,14 @@ pub struct Opt {
         help = "Size of the protected region (including headers)"
     )]
     pub protected_region_size: Option<u32>,
+
+    #[structopt(
+        long = "permissions",
+        name = "permissions",
+        help = "A list of driver numbers and allowed commands",
+        parse(try_from_str = parse_perms),
+    )]
+    pub permissions: Vec<(u32, u32)>,
 }
 
 mod test {
