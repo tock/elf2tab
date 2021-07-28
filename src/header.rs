@@ -16,7 +16,7 @@ enum TbfHeaderTypes {
     PicOption1 = 4,
     FixedAddresses = 5,
     Permissions = 6,
-    KernelVersion = 7,
+    KernelVersion = 8,
 }
 
 #[repr(C)]
