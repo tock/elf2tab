@@ -78,7 +78,7 @@ struct TbfHeaderPermissions {
 }
 
 #[repr(C)]
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 struct TbfHeaderKernelVersion {
     base: TbfHeaderTlv,
     major: u16,
@@ -332,7 +332,7 @@ impl TbfHeader {
                 },
                 array_length: perms.len() as u16,
                 perms,
-            }
+            });
         }
 
         // If the kernel version is set, we have to include the header.
@@ -469,7 +469,8 @@ impl fmt::Display for TbfHeader {
         self.hdr_fixed_addresses
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         self.hdr_permissions
-            .as_ref().map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
+            .as_ref()
+            .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         self.hdr_kernel_version
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         Ok(())

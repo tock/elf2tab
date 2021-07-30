@@ -109,7 +109,7 @@ pub struct Opt {
         parse(try_from_str = parse_perms),
     )]
     pub permissions: Vec<(u32, u32)>,
-    
+
     #[structopt(
         long = "kernel-major",
         name = "kernel-major-version",
