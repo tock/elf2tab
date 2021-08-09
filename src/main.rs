@@ -116,12 +116,6 @@ fn main() {
         outfile.seek(io::SeekFrom::Start(0)).unwrap();
         tab.append_file(tbf_path.file_name().unwrap(), &mut outfile)
             .unwrap();
-        outfile.seek(io::SeekFrom::Start(0)).unwrap();
-        tab.append_file(
-            tbf_path.with_extension("bin").file_name().unwrap(),
-            &mut outfile,
-        )
-        .unwrap();
     }
 }
 
