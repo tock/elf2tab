@@ -91,6 +91,17 @@ fn main() {
             .open(tbf_path.clone())
             .unwrap();
 
+        // Adding padding to the end of cortex-m apps. Check for a cortex-m app
+        // because the start of the elf filename will start with "cortex".
+        //
+        // RISC-V apps do not need to be sized to power of two.
+        let add_trailing_padding = elf_path
+            .file_name()
+            .unwrap_or(std::ffi::OsStr::new(""))
+            .to_str()
+            .unwrap_or("")
+            .starts_with("cortex");
+
         // Do the conversion to a tock binary.
         if opt.verbose {
             println!("Creating {:?}", tbf_path);
@@ -106,7 +117,7 @@ fn main() {
             opt.protected_region_size,
             opt.permissions.to_vec(),
             minimum_tock_kernel_version,
-            true,
+            add_trailing_padding,
         )
         .unwrap();
         if opt.verbose {
