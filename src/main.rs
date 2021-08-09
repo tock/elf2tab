@@ -106,6 +106,7 @@ fn main() {
             opt.protected_region_size,
             opt.permissions.to_vec(),
             minimum_tock_kernel_version,
+            true,
         )
         .unwrap();
         if opt.verbose {
@@ -148,6 +149,7 @@ fn elf_to_tbf<W: Write>(
     protected_region_size_arg: Option<u32>,
     permissions: Vec<(u32, u32)>,
     kernel_version: Option<(u16, u16)>,
+    trailing_padding: bool,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -553,16 +555,25 @@ fn elf_to_tbf<W: Write>(
     // the relocation data length.
     binary_index += relocation_binary.len() + mem::size_of::<u32>();
 
-    // That is everything that we are going to include in our app binary. Now
-    // we need to pad the binary to a power of 2 in size, and make sure it is
-    // at least 512 bytes in size.
-    let post_content_pad = if binary_index.count_ones() > 1 {
-        let power2len = cmp::max(1 << (32 - (binary_index as u32).leading_zeros()), 512);
-        power2len - binary_index
+    // That is everything that we are going to include in our app binary.
+
+    let post_content_pad = if trailing_padding {
+        // If trailing padding is requested, we need to pad the binary to a
+        // power of 2 in size, and make sure it is at least 512 bytes in size.
+        let pad = if binary_index.count_ones() > 1 {
+            let power2len = cmp::max(1 << (32 - (binary_index as u32).leading_zeros()), 512);
+            power2len - binary_index
+        } else {
+            0
+        };
+        // Increment to include the padding.
+        binary_index += pad;
+        pad
     } else {
+        // No padding.
         0
     };
-    binary_index += post_content_pad;
+
     let total_size = binary_index;
 
     // Now set the total size of the app in the header.
@@ -580,7 +591,7 @@ fn elf_to_tbf<W: Write>(
     output.write_all(&rel_data_len)?;
     output.write_all(relocation_binary.as_ref())?;
 
-    // Pad to get a power of 2 sized flash app.
+    // Pad to get a power of 2 sized flash app, if requested.
     util::do_pad(output, post_content_pad as usize)?;
 
     Ok(())
