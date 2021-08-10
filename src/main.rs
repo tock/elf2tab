@@ -92,15 +92,12 @@ fn main() {
             .unwrap();
 
         // Adding padding to the end of cortex-m apps. Check for a cortex-m app
-        // because the start of the elf filename will start with "cortex".
+        // by inspecting the "machine" value in the elf header. 0x28 is ARM (see
+        // https://en.wikipedia.org/wiki/Executable_and_Linkable_Format#File_header
+        // for a list).
         //
         // RISC-V apps do not need to be sized to power of two.
-        let add_trailing_padding = elf_path
-            .file_name()
-            .unwrap_or(std::ffi::OsStr::new(""))
-            .to_str()
-            .unwrap_or("")
-            .starts_with("cortex");
+        let add_trailing_padding = elffile.ehdr.machine.0 == 0x28;
 
         // Do the conversion to a tock binary.
         if opt.verbose {
