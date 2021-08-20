@@ -450,7 +450,22 @@ fn elf_to_tbf<W: Write>(
 
     let mut entry_point_found = false;
 
-    // Iterate the sections in the ELF file and add them to the binary as needed
+    // We need to keep track of the address in the elf file for each section we
+    // are adding to the binary. Sections can have padding between them that we
+    // need to preserve. So, we track where the last section we wrote to our
+    // output binary ended in the segment address space specified in the .elf.
+    //
+    // *********
+    // TODO! (added 08/2021, but known about for a while before that)
+    // *********
+    // elf2tab needs to be re-written to use segments rather the hack we have
+    // here. We just assume we can ad-hoc determine the sections we need to
+    // include, when we should just use the segment mapping. Because of this,
+    // `last_section_address_end` is a hack as well.
+    let mut last_section_address_end: Option<usize> = None;
+
+    // Iterate the sections in the ELF file. The sections are sorted in order of
+    // offset. Add the sections we need to the binary.
     for s in &sections_sort {
         let section = &input.sections[s.0];
 
@@ -483,6 +498,36 @@ fn elf_to_tbf<W: Write>(
             && section.shdr.shtype == elf::types::SHT_PROGBITS
             && section.shdr.size > 0
         {
+            // This is a section we are going to add to the binary.
+
+            if last_section_address_end.is_some() {
+                // We have a previous section. Now, check if there is any
+                // padding between the sections in the .elf.
+                let end = last_section_address_end.unwrap();
+                let start = section.shdr.addr as usize;
+
+                // Because we have flash and ram memory regions, we have
+                // multiple address spaces. This check lets us assume we are in
+                // a new address segment. We need the start of the next section
+                // to be after the previous one, and the gap to not be _too_
+                // large.
+                if start > end && (start - end) < 100 {
+                    // If this is the next section in the same segment, then
+                    // check if there is any padding required.
+                    let padding = start - end;
+                    if padding > 0 {
+                        if verbose {
+                            println!("  Adding {} bytes of padding between sections", padding,);
+                        }
+
+                        // Increment our index pointer and add the padding bytes.
+                        binary_index += padding;
+                        let zero_buf = [0_u8; 512];
+                        binary.extend(&zero_buf[..padding]);
+                    }
+                }
+            }
+
             if verbose {
                 println!(
                     "  Adding {0} section. Offset: {1} ({1:#x}). Length: {2} ({2:#x}) bytes.",
@@ -510,6 +555,9 @@ fn elf_to_tbf<W: Write>(
 
             // Now increment where we are in the binary.
             binary_index += section.shdr.size as usize;
+
+            // And update our end in the .elf offset address space.
+            last_section_address_end = Some((section.shdr.addr + section.shdr.size) as usize);
         }
     }
 
