@@ -83,7 +83,7 @@ dependencies = [
 
 [[package]]
 name = "elf2tab"
-version = "0.7.0"
+version = "0.8.0"
 dependencies = [
  "chrono",
  "elf",
