@@ -333,6 +333,25 @@ impl TbfHeader {
             header_length += 2;
         }
 
+        if storage_ids.0.is_some() || storage_ids.1.is_some() || storage_ids.2.is_some() {
+            // base
+            header_length += mem::size_of::<TbfHeaderTlv>();
+            //write_id
+            header_length += mem::size_of::<u32>();
+            // read_length
+            header_length += mem::size_of::<u16>();
+            if let Some(read_ids) = &storage_ids.1 {
+                // read_ids
+                header_length += mem::size_of::<u32>() * read_ids.len();
+            }
+            // access_length
+            header_length += mem::size_of::<u16>();
+            if let Some(access_ids) = &storage_ids.2 {
+                // access_ids
+                header_length += mem::size_of::<u32>() * access_ids.len();
+            }
+        }
+
         // Check if we have to include a kernel version header.
         if kernel_version.is_some() {
             header_length += mem::size_of::<TbfHeaderKernelVersion>();
@@ -501,6 +520,20 @@ impl TbfHeader {
                 header_buf.write_all(unsafe { util::as_byte_slice(perm) })?;
             }
             util::do_pad(&mut header_buf, 2)?;
+        }
+
+        // If there are storage IDs, include that TLV
+        if let Some(hdr_persistent) = &self.hdr_persistent {
+            header_buf.write_all(unsafe { util::as_byte_slice(&hdr_persistent.base) })?;
+            header_buf.write_all(unsafe { util::as_byte_slice(&hdr_persistent.write_id) })?;
+            header_buf.write_all(unsafe { util::as_byte_slice(&hdr_persistent.read_length) })?;
+            for read_id in &hdr_persistent.read_ids {
+                header_buf.write_all(unsafe { util::as_byte_slice(read_id) })?;
+            }
+            header_buf.write_all(unsafe { util::as_byte_slice(&hdr_persistent.access_length) })?;
+            for access_id in &hdr_persistent.access_ids {
+                header_buf.write_all(unsafe { util::as_byte_slice(access_id) })?;
+            }
         }
 
         // If the kernel version is set, include that TLV
