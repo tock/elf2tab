@@ -298,6 +298,41 @@ impl TbfHeader {
             header_length += mem::size_of::<TbfHeaderFixedAddresses>();
         }
 
+        // Check to see how many perms we have
+        let mut perms: Vec<TbfHeaderDriverPermission> = Vec::new();
+        for perm in permissions {
+            let offset = perm.1 / 64;
+            let allowed_command = 1 << (perm.1 % 64);
+            let mut complete = false;
+
+            for p in &mut perms {
+                if p.driver_number == perm.0 && p.offset == offset {
+                    p.allowed_commands |= allowed_command;
+                    complete = true;
+                }
+            }
+
+            if !complete {
+                perms.push(TbfHeaderDriverPermission {
+                    driver_number: perm.0,
+                    offset: perm.1 / 64,
+                    allowed_commands: allowed_command,
+                })
+            }
+        }
+
+        if perms.len() > 0 {
+            // base
+            header_length += mem::size_of::<TbfHeaderTlv>();
+            // length
+            header_length += mem::size_of::<u16>();
+            // perms
+            header_length += mem::size_of::<TbfHeaderDriverPermission>() * perms.len();
+
+            // Header length increases by that padding
+            header_length += 2;
+        }
+
         // Check if we have to include a kernel version header.
         if kernel_version.is_some() {
             header_length += mem::size_of::<TbfHeaderKernelVersion>();
@@ -342,28 +377,6 @@ impl TbfHeader {
                 start_process_ram: fixed_address_ram.unwrap_or(0xFFFFFFFF),
                 start_process_flash: fixed_address_flash.unwrap_or(0xFFFFFFFF),
             });
-        }
-
-        let mut perms: Vec<TbfHeaderDriverPermission> = Vec::new();
-        for perm in permissions {
-            let offset = perm.1 / 64;
-            let allowed_command = 1 << (perm.1 % 64);
-            let mut complete = false;
-
-            for p in &mut perms {
-                if p.driver_number == perm.0 && p.offset == offset {
-                    p.allowed_commands |= allowed_command;
-                    complete = true;
-                }
-            }
-
-            if !complete {
-                perms.push(TbfHeaderDriverPermission {
-                    driver_number: perm.0,
-                    offset: perm.1 / 64,
-                    allowed_commands: allowed_command,
-                })
-            }
         }
 
         if perms.len() > 0 {
@@ -478,6 +491,16 @@ impl TbfHeader {
         // If there are fixed addresses, include that TLV.
         if self.hdr_fixed_addresses.is_some() {
             header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_fixed_addresses) })?;
+        }
+
+        // If there are permissions, include that TLV
+        if let Some(hdr_permissions) = &self.hdr_permissions {
+            header_buf.write_all(unsafe { util::as_byte_slice(&hdr_permissions.base) })?;
+            header_buf.write_all(unsafe { util::as_byte_slice(&hdr_permissions.length) })?;
+            for perm in &hdr_permissions.perms {
+                header_buf.write_all(unsafe { util::as_byte_slice(perm) })?;
+            }
+            util::do_pad(&mut header_buf, 2)?;
         }
 
         // If the kernel version is set, include that TLV
