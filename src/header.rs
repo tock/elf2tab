@@ -16,6 +16,7 @@ enum TbfHeaderTypes {
     PicOption1 = 4,
     FixedAddresses = 5,
     Permissions = 6,
+    Persistent = 7,
     KernelVersion = 8,
 }
 
@@ -75,6 +76,17 @@ struct TbfHeaderPermissions {
     base: TbfHeaderTlv,
     length: u16,
     perms: Vec<TbfHeaderDriverPermission>,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct TbfHeaderPersistentAcl {
+    base: TbfHeaderTlv,
+    write_id: u32,
+    read_length: u16,
+    read_ids: Vec<u32>,
+    access_length: u16,
+    access_ids: Vec<u32>,
 }
 
 #[repr(C)]
@@ -158,6 +170,33 @@ impl fmt::Display for TbfHeaderPermissions {
     }
 }
 
+impl fmt::Display for TbfHeaderPersistentAcl {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(
+            f,
+            "
+              write ID: {0:>#19X}",
+            self.write_id
+        )?;
+
+        if self.read_length > 0 {
+            writeln!(f, "              read IDs: {0:>#8}", self.read_length,)?;
+            for read_id in &self.read_ids {
+                writeln!(f, "                      : {0:>#19X}", read_id,)?;
+            }
+        }
+
+        if self.access_length > 0 {
+            writeln!(f, "            access IDs: {0:>#8}", self.access_length)?;
+            for access_id in &self.access_ids {
+                writeln!(f, "                      : {0:>#19X}", access_id,)?;
+            }
+        }
+
+        Ok(())
+    }
+}
+
 impl fmt::Display for TbfHeaderKernelVersion {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         // ^x.y means >= x.y, < (x+1).0
@@ -177,6 +216,7 @@ pub struct TbfHeader {
     hdr_wfr: Vec<TbfHeaderWriteableFlashRegion>,
     hdr_fixed_addresses: Option<TbfHeaderFixedAddresses>,
     hdr_permissions: Option<TbfHeaderPermissions>,
+    hdr_persistent: Option<TbfHeaderPersistentAcl>,
     hdr_kernel_version: Option<TbfHeaderKernelVersion>,
     package_name: String,
     package_name_pad: usize,
@@ -206,6 +246,7 @@ impl TbfHeader {
             hdr_wfr: Vec::new(),
             hdr_fixed_addresses: None,
             hdr_permissions: None,
+            hdr_persistent: None,
             hdr_kernel_version: None,
             package_name: String::new(),
             package_name_pad: 0,
@@ -469,6 +510,9 @@ impl fmt::Display for TbfHeader {
         self.hdr_fixed_addresses
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         self.hdr_permissions
+            .as_ref()
+            .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
+        self.hdr_persistent
             .as_ref()
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         self.hdr_kernel_version
