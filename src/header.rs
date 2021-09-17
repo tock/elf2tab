@@ -268,6 +268,7 @@ impl TbfHeader {
         fixed_address_ram: Option<u32>,
         fixed_address_flash: Option<u32>,
         permissions: Vec<(u32, u32)>,
+        storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
         kernel_version: Option<(u16, u16)>,
     ) -> usize {
         // Need to calculate lengths ahead of time.
@@ -374,6 +375,38 @@ impl TbfHeader {
                 length: perms.len() as u16,
                 perms,
             });
+        }
+
+        if storage_ids.0.is_some() || storage_ids.1.is_some() || storage_ids.2.is_some() {
+            let mut hdr_persistent = TbfHeaderPersistentAcl {
+                base: TbfHeaderTlv {
+                    tipe: TbfHeaderTypes::Persistent,
+                    length: 4 + 2 + 2,
+                },
+                write_id: 0,
+                read_length: 0,
+                read_ids: Vec::new(),
+                access_length: 0,
+                access_ids: Vec::new(),
+            };
+
+            if let Some(write_id) = storage_ids.0 {
+                hdr_persistent.write_id = write_id;
+            }
+
+            if let Some(read_ids) = storage_ids.1 {
+                hdr_persistent.base.length += read_ids.len() as u16;
+                hdr_persistent.read_length = read_ids.len() as u16;
+                hdr_persistent.read_ids = read_ids;
+            }
+
+            if let Some(access_ids) = storage_ids.2 {
+                hdr_persistent.base.length += access_ids.len() as u16;
+                hdr_persistent.access_length = access_ids.len() as u16;
+                hdr_persistent.access_ids = access_ids;
+            }
+
+            self.hdr_persistent = Some(hdr_persistent);
         }
 
         // If the kernel version is set, we have to include the header.
