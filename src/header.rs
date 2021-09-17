@@ -73,7 +73,7 @@ struct TbfHeaderDriverPermission {
 #[derive(Debug)]
 struct TbfHeaderPermissions {
     base: TbfHeaderTlv,
-    array_length: u16,
+    length: u16,
     perms: Vec<TbfHeaderDriverPermission>,
 }
 
@@ -142,9 +142,9 @@ impl fmt::Display for TbfHeaderPermissions {
         writeln!(
             f,
             "
-          array_length: {0:>8} {0:>#8}
+    driver permissions: {0:>8}
            permissions:   Number   Offset  Allowed Bit Mask",
-            self.array_length,
+            self.length,
         )?;
 
         for perm in &self.perms {
@@ -328,9 +328,9 @@ impl TbfHeader {
             self.hdr_permissions = Some(TbfHeaderPermissions {
                 base: TbfHeaderTlv {
                     tipe: TbfHeaderTypes::Permissions,
-                    length: 8,
+                    length: (perms.len() * mem::size_of::<TbfHeaderDriverPermission>()) as u16 + 2,
                 },
-                array_length: perms.len() as u16,
+                length: perms.len() as u16,
                 perms,
             });
         }
