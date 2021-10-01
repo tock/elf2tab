@@ -111,6 +111,27 @@ pub struct Opt {
     pub permissions: Vec<(u32, u32)>,
 
     #[structopt(
+        long = "write_id",
+        name = "write_id",
+        help = "A storage ID used for writing data"
+    )]
+    pub write_id: Option<u32>,
+
+    #[structopt(
+        long = "read_ids",
+        name = "read_ids",
+        help = "Storage IDs that this app is allowed to read"
+    )]
+    pub read_ids: Option<Vec<u32>>,
+
+    #[structopt(
+        long = "access_ids",
+        name = "access_ids",
+        help = "Storage IDs that this app is allowed to write"
+    )]
+    pub access_ids: Option<Vec<u32>>,
+
+    #[structopt(
         long = "kernel-major",
         name = "kernel-major-version",
         help = "The kernel version that the app requires"
@@ -355,6 +376,26 @@ mod test {
                 "10",
                 "--minimum-ram-size",
                 "10",
+                "app.elf",
+            ];
+            let result = Opt::from_iter_safe(args.iter());
+            assert!(result.is_err());
+        }
+    }
+
+    #[test]
+    // elf2tab [FLAGS] [--write_id=<write_id>] [--read_ids=<read_ids>] [--access_ids=<access_ids>]
+    //                <elf>..."
+    fn storage_ids() {
+        {
+            let args = vec![
+                "elf2tab",
+                "--write_id",
+                "1234567",
+                "--read_ids",
+                "1 2",
+                "--access_ids",
+                "2 3",
                 "app.elf",
             ];
             let result = Opt::from_iter_safe(args.iter());

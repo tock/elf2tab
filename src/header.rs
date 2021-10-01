@@ -16,6 +16,7 @@ enum TbfHeaderTypes {
     PicOption1 = 4,
     FixedAddresses = 5,
     Permissions = 6,
+    Persistent = 7,
     KernelVersion = 8,
 }
 
@@ -73,8 +74,19 @@ struct TbfHeaderDriverPermission {
 #[derive(Debug)]
 struct TbfHeaderPermissions {
     base: TbfHeaderTlv,
-    array_length: u16,
+    length: u16,
     perms: Vec<TbfHeaderDriverPermission>,
+}
+
+#[repr(C)]
+#[derive(Debug)]
+struct TbfHeaderPersistentAcl {
+    base: TbfHeaderTlv,
+    write_id: u32,
+    read_length: u16,
+    read_ids: Vec<u32>,
+    access_length: u16,
+    access_ids: Vec<u32>,
 }
 
 #[repr(C)]
@@ -142,9 +154,9 @@ impl fmt::Display for TbfHeaderPermissions {
         writeln!(
             f,
             "
-          array_length: {0:>8} {0:>#8}
+    driver permissions: {0:>8}
            permissions:   Number   Offset  Allowed Bit Mask",
-            self.array_length,
+            self.length,
         )?;
 
         for perm in &self.perms {
@@ -154,6 +166,33 @@ impl fmt::Display for TbfHeaderPermissions {
                 perm.driver_number, perm.offset, perm.allowed_commands,
             )?;
         }
+        Ok(())
+    }
+}
+
+impl fmt::Display for TbfHeaderPersistentAcl {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(
+            f,
+            "
+              write ID: {0:>#19X}",
+            self.write_id
+        )?;
+
+        if self.read_length > 0 {
+            writeln!(f, "              read IDs: {0:>#8}", self.read_length,)?;
+            for read_id in &self.read_ids {
+                writeln!(f, "                      : {0:>#19X}", read_id,)?;
+            }
+        }
+
+        if self.access_length > 0 {
+            writeln!(f, "            access IDs: {0:>#8}", self.access_length)?;
+            for access_id in &self.access_ids {
+                writeln!(f, "                      : {0:>#19X}", access_id,)?;
+            }
+        }
+
         Ok(())
     }
 }
@@ -177,6 +216,7 @@ pub struct TbfHeader {
     hdr_wfr: Vec<TbfHeaderWriteableFlashRegion>,
     hdr_fixed_addresses: Option<TbfHeaderFixedAddresses>,
     hdr_permissions: Option<TbfHeaderPermissions>,
+    hdr_persistent: Option<TbfHeaderPersistentAcl>,
     hdr_kernel_version: Option<TbfHeaderKernelVersion>,
     package_name: String,
     package_name_pad: usize,
@@ -206,6 +246,7 @@ impl TbfHeader {
             hdr_wfr: Vec::new(),
             hdr_fixed_addresses: None,
             hdr_permissions: None,
+            hdr_persistent: None,
             hdr_kernel_version: None,
             package_name: String::new(),
             package_name_pad: 0,
@@ -227,6 +268,7 @@ impl TbfHeader {
         fixed_address_ram: Option<u32>,
         fixed_address_flash: Option<u32>,
         permissions: Vec<(u32, u32)>,
+        storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
         kernel_version: Option<(u16, u16)>,
     ) -> usize {
         // Need to calculate lengths ahead of time.
@@ -254,6 +296,60 @@ impl TbfHeader {
         // set we need to include the entire header.
         if fixed_address_ram.is_some() || fixed_address_flash.is_some() {
             header_length += mem::size_of::<TbfHeaderFixedAddresses>();
+        }
+
+        // Check to see how many perms we have
+        let mut perms: Vec<TbfHeaderDriverPermission> = Vec::new();
+        for perm in permissions {
+            let offset = perm.1 / 64;
+            let allowed_command = 1 << (perm.1 % 64);
+            let mut complete = false;
+
+            for p in &mut perms {
+                if p.driver_number == perm.0 && p.offset == offset {
+                    p.allowed_commands |= allowed_command;
+                    complete = true;
+                }
+            }
+
+            if !complete {
+                perms.push(TbfHeaderDriverPermission {
+                    driver_number: perm.0,
+                    offset: perm.1 / 64,
+                    allowed_commands: allowed_command,
+                })
+            }
+        }
+
+        if perms.len() > 0 {
+            // base
+            header_length += mem::size_of::<TbfHeaderTlv>();
+            // length
+            header_length += mem::size_of::<u16>();
+            // perms
+            header_length += mem::size_of::<TbfHeaderDriverPermission>() * perms.len();
+
+            // Header length increases by that padding
+            header_length += 2;
+        }
+
+        if storage_ids.0.is_some() || storage_ids.1.is_some() || storage_ids.2.is_some() {
+            // base
+            header_length += mem::size_of::<TbfHeaderTlv>();
+            //write_id
+            header_length += mem::size_of::<u32>();
+            // read_length
+            header_length += mem::size_of::<u16>();
+            if let Some(read_ids) = &storage_ids.1 {
+                // read_ids
+                header_length += mem::size_of::<u32>() * read_ids.len();
+            }
+            // access_length
+            header_length += mem::size_of::<u16>();
+            if let Some(access_ids) = &storage_ids.2 {
+                // access_ids
+                header_length += mem::size_of::<u32>() * access_ids.len();
+            }
         }
 
         // Check if we have to include a kernel version header.
@@ -302,37 +398,47 @@ impl TbfHeader {
             });
         }
 
-        let mut perms: Vec<TbfHeaderDriverPermission> = Vec::new();
-        for perm in permissions {
-            let offset = perm.1 / 64;
-            let allowed_command = 1 << (perm.1 % 64);
-            let mut complete = false;
-
-            for p in &mut perms {
-                if p.driver_number == perm.0 && p.offset == offset {
-                    p.allowed_commands |= allowed_command;
-                    complete = true;
-                }
-            }
-
-            if !complete {
-                perms.push(TbfHeaderDriverPermission {
-                    driver_number: perm.0,
-                    offset: perm.1 / 64,
-                    allowed_commands: allowed_command,
-                })
-            }
-        }
-
         if perms.len() > 0 {
             self.hdr_permissions = Some(TbfHeaderPermissions {
                 base: TbfHeaderTlv {
                     tipe: TbfHeaderTypes::Permissions,
-                    length: 8,
+                    length: (perms.len() * mem::size_of::<TbfHeaderDriverPermission>()) as u16 + 2,
                 },
-                array_length: perms.len() as u16,
+                length: perms.len() as u16,
                 perms,
             });
+        }
+
+        if storage_ids.0.is_some() || storage_ids.1.is_some() || storage_ids.2.is_some() {
+            let mut hdr_persistent = TbfHeaderPersistentAcl {
+                base: TbfHeaderTlv {
+                    tipe: TbfHeaderTypes::Persistent,
+                    length: 4 + 2 + 2,
+                },
+                write_id: 0,
+                read_length: 0,
+                read_ids: Vec::new(),
+                access_length: 0,
+                access_ids: Vec::new(),
+            };
+
+            if let Some(write_id) = storage_ids.0 {
+                hdr_persistent.write_id = write_id;
+            }
+
+            if let Some(read_ids) = storage_ids.1 {
+                hdr_persistent.base.length += read_ids.len() as u16;
+                hdr_persistent.read_length = read_ids.len() as u16;
+                hdr_persistent.read_ids = read_ids;
+            }
+
+            if let Some(access_ids) = storage_ids.2 {
+                hdr_persistent.base.length += access_ids.len() as u16;
+                hdr_persistent.access_length = access_ids.len() as u16;
+                hdr_persistent.access_ids = access_ids;
+            }
+
+            self.hdr_persistent = Some(hdr_persistent);
         }
 
         // If the kernel version is set, we have to include the header.
@@ -406,6 +512,30 @@ impl TbfHeader {
             header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_fixed_addresses) })?;
         }
 
+        // If there are permissions, include that TLV
+        if let Some(hdr_permissions) = &self.hdr_permissions {
+            header_buf.write_all(unsafe { util::as_byte_slice(&hdr_permissions.base) })?;
+            header_buf.write_all(unsafe { util::as_byte_slice(&hdr_permissions.length) })?;
+            for perm in &hdr_permissions.perms {
+                header_buf.write_all(unsafe { util::as_byte_slice(perm) })?;
+            }
+            util::do_pad(&mut header_buf, 2)?;
+        }
+
+        // If there are storage IDs, include that TLV
+        if let Some(hdr_persistent) = &self.hdr_persistent {
+            header_buf.write_all(unsafe { util::as_byte_slice(&hdr_persistent.base) })?;
+            header_buf.write_all(unsafe { util::as_byte_slice(&hdr_persistent.write_id) })?;
+            header_buf.write_all(unsafe { util::as_byte_slice(&hdr_persistent.read_length) })?;
+            for read_id in &hdr_persistent.read_ids {
+                header_buf.write_all(unsafe { util::as_byte_slice(read_id) })?;
+            }
+            header_buf.write_all(unsafe { util::as_byte_slice(&hdr_persistent.access_length) })?;
+            for access_id in &hdr_persistent.access_ids {
+                header_buf.write_all(unsafe { util::as_byte_slice(access_id) })?;
+            }
+        }
+
         // If the kernel version is set, include that TLV
         if self.hdr_kernel_version.is_some() {
             header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_kernel_version) })?;
@@ -469,6 +599,9 @@ impl fmt::Display for TbfHeader {
         self.hdr_fixed_addresses
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         self.hdr_permissions
+            .as_ref()
+            .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
+        self.hdr_persistent
             .as_ref()
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         self.hdr_kernel_version

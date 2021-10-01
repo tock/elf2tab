@@ -11,31 +11,29 @@ Usage
 
 ```
 USAGE:
-    elf2tab [FLAGS] [--protected-region-size=<protected-region-size>]
-                    [--package-name=<pkg-name>] [--output-file=<filename>] <elf>...
-    elf2tab [FLAGS] [--protected-region-size=<protected-region-size>] [--package-name=<pkg-name>]
-                    [--output-file=<filename>] [--minimum-ram-size=<min-ram-size>] <elf>...
-    elf2tab [FLAGS] [--protected-region-size=<protected-region-size>]
-                    [--package-name=<pkg-name>] [--output-file=<filename>]
-                    [--app-heap=<heap-size>] [--kernel-heap=<kernel-heap-size>] [--stack=<stack-size>] <elf>...
+    elf2tab [FLAGS] [OPTIONS] ELF...
+Converts Tock userspace programs from .elf files to Tock Application Bundles.
 
 FLAGS:
-    -h, --help       Prints help information
-    -V, --version    Prints version information
-    -v, --verbose    Be verbose
+        --deterministic    Produce a deterministic TAB file
+    -h, --help             Prints help information
+    -V, --version          Prints version information
+    -v, --verbose          Be verbose
 
 OPTIONS:
-        --deterministic                         Produce a deterministic TAB file
-    -o, --output-file <filename>                Output file name [default: TockApp.tab]
-    -n, --package-name <pkg-name>               Package name [default: empty]
-        --protected-region-size <protected-region-size>
-                                                Size of the protected region (including headers)
-        --minimum-ram-size <min-ram-size>       In bytes [default: from RAM sections in ELF]
-        --app-heap <heap-size>                  In bytes [default: 1024]
-        --kernel-heap <kernel-heap-size>        In bytes [default: 1024]
-        --stack <stack-size>                    In bytes [default: 2048]
-        --kernel-major <kernel-major-version>   The kernel version that the app requires
-        --kernel-minor <kernel-minor-version>   The minimum kernel minor version that the app requires
+        --access_ids <access_ids>...                       Storage IDs that this app is allowed to write
+    -o, --output-file <filename>                           output file name [default: TockApp.tab]
+        --app-heap <heap-size>                             in bytes [default: 1024]
+        --kernel-heap <kernel-heap-size>                   in bytes [default: 1024]
+        --kernel-major <kernel-major-version>              The kernel version that the app requires
+        --kernel-minor <kernel-minor-version>              The minimum kernel minor version that the app requires
+        --minimum-ram-size <min-ram-size>                  in bytes
+        --permissions <permissions>...                     A list of driver numbers and allowed commands
+    -n, --package-name <pkg-name>                          package name
+        --protected-region-size <protected-region-size>    Size of the protected region (including headers)
+        --read_ids <read_ids>...                           Storage IDs that this app is allowed to read
+        --stack <stack-size>                               in bytes [default: 2048]
+        --write_id <write_id>                              A storage ID used for writing data
 
 ARGS:
     <elf>...    application file(s) to package
@@ -46,7 +44,7 @@ device) with this tool would look like:
 
     $ elf2tab -o blink.tab -n blink --stack 1024 --app-heap 1024 --kernel-heap 1024 cortex-m4.elf
 
-It also supports (and encourages!) combing .elf files for multiple architectures
+It also supports (and encourages!) combining .elf files for multiple architectures
 into a single tab:
 
     $ elf2tab -o blink.tab -n blink --stack 1024 --app-heap 1024 --kernel-heap 1024 cortex-m0.elf cortex-m3.elf cortex-m4.elf
@@ -126,6 +124,27 @@ the application binary are placed at useful addresses in flash. elf2tab will try
 to increase the size of the protected region to make the start of the TBF header
 at an address aligned to 256 bytes when the application binary is at its correct
 fixed address.
+
+#### Syscall Permissions
+
+elf2tab allows explicitly specifying the syscalls that an app is allowed to
+call. This is done with the `--permissions` flag.
+An example of allowing driver number `1` command `0` and command `1` looks like
+this:
+
+    $ elf2tab --permissions 1,0 1,1 ...
+
+It is then up to the Tock kernel and board to apply the filters.
+
+#### Storage IDs
+
+elf2tab also allows specifying the storage IDs. These are used to access
+nonvolatile data from userspace. You can specify a single write_id used
+to store new data and multiple read_ids and access_ids used to enforce
+read/write permissions on existing data.
+
+An example looks like this
+    $ elf2tab  --write_id 12345678 --read_ids 1 2 --access_ids 2 3 ...
 
 ### Creating the TAB file
 

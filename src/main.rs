@@ -113,6 +113,7 @@ fn main() {
             opt.kernel_heap_size,
             opt.protected_region_size,
             opt.permissions.to_vec(),
+            (opt.write_id, opt.read_ids.clone(), opt.access_ids.clone()),
             minimum_tock_kernel_version,
             add_trailing_padding,
         )
@@ -150,6 +151,7 @@ fn elf_to_tbf<W: Write>(
     kernel_heap_len: u32,
     protected_region_size_arg: Option<u32>,
     permissions: Vec<(u32, u32)>,
+    storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
     kernel_version: Option<(u16, u16)>,
     trailing_padding: bool,
 ) -> io::Result<()> {
@@ -359,6 +361,7 @@ fn elf_to_tbf<W: Write>(
         fixed_address_ram,
         fixed_address_flash,
         permissions,
+        storage_ids,
         kernel_version,
     );
     // If a protected region size was passed, confirm the header will fit.
