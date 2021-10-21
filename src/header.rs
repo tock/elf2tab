@@ -209,6 +209,8 @@ impl fmt::Display for TbfHeaderKernelVersion {
     }
 }
 
+const FLAGS_ENABLE: u32 = 0x0000_0001;
+
 pub struct TbfHeader {
     hdr_base: TbfHeaderBase,
     hdr_main: TbfHeaderMain,
@@ -270,6 +272,7 @@ impl TbfHeader {
         permissions: Vec<(u32, u32)>,
         storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
         kernel_version: Option<(u16, u16)>,
+        disabled: bool,
     ) -> usize {
         // Need to calculate lengths ahead of time.
         // Need the base and the main section.
@@ -357,8 +360,11 @@ impl TbfHeader {
             header_length += mem::size_of::<TbfHeaderKernelVersion>();
         }
 
-        // Flags default to app is enabled.
-        let flags = 0x0000_0001;
+        let mut flags = 0x0000_0000;
+
+        if !disabled {
+            flags |= FLAGS_ENABLE
+        };
 
         // Fill in the fields that we can at this point.
         self.hdr_base.header_size = header_length as u16;

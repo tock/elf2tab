@@ -135,6 +135,7 @@ fn main() {
             (opt.write_id, opt.read_ids.clone(), opt.access_ids.clone()),
             minimum_tock_kernel_version,
             add_trailing_padding,
+            opt.disabled,
         )
         .unwrap();
         if opt.verbose {

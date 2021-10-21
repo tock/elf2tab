@@ -30,6 +30,7 @@ pub fn elf_to_tbf<W: Write>(
     storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
     kernel_version: Option<(u16, u16)>,
     trailing_padding: bool,
+    disabled: bool,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -253,6 +254,7 @@ pub fn elf_to_tbf<W: Write>(
         permissions,
         storage_ids,
         kernel_version,
+        disabled,
     );
     // If a protected region size was passed, confirm the header will fit.
     // Otherwise, use the header size as the protected region size.

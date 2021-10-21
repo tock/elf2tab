@@ -64,6 +64,9 @@ pub struct Opt {
     #[structopt(long = "deterministic", help = "Produce a deterministic TAB file")]
     pub deterministic: bool,
 
+    #[structopt(long = "disable", help = "Mark the app as disabled in the TBF flags")]
+    pub disabled: bool,
+
     #[structopt(
         long = "minimum-ram-size",
         name = "min-ram-size",
