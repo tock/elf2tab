@@ -594,7 +594,7 @@ fn elf_to_tbf<W: Write>(
                 name,
                 binary_index + mem::size_of::<u32>() + rel_data.len(),
                 rel_data.len(),
-            );
+            ); 
         }
         if !rel_data.is_empty() && amount_alignment_needed(binary_index as u32, 4) != 0 {
             println!(
@@ -608,8 +608,12 @@ fn elf_to_tbf<W: Write>(
     // the relocation data length.
     binary_index += relocation_binary.len() + mem::size_of::<u32>();
 
-    // That is everything that we are going to include in our app binary.
+    // That is everything that we are going to include in the app binary
+    // that is covered by integrity.
+    tbfheader.set_binary_end_offset(binary_index as u32);
 
+    binary_index += mem::size_of::<header::TbfFooterCredentials>();
+    
     let post_content_pad = if trailing_padding {
         // If trailing padding is requested, we need to pad the binary to a
         // power of 2 in size, and make sure it is at least 512 bytes in size.
@@ -644,6 +648,24 @@ fn elf_to_tbf<W: Write>(
     output.write_all(&rel_data_len)?;
     output.write_all(relocation_binary.as_ref())?;
 
+    let padding = total_size - tbfheader.binary_end_offset() as usize;
+    let padding_tlv_len = padding - 4;
+
+    let padding_credentials = header::TbfFooterCredentials {
+        base: header::TbfHeaderTlv {
+            tipe: header::TbfHeaderTypes::Credentials,
+            length: padding_tlv_len as u16
+        },
+        format: header::TbfFooterCredentialsFormat::Padding
+    };
+    print!("Padding TBF with {} bytes (0x{:04x}).\n", padding_tlv_len, padding_tlv_len);
+    let creds = padding_credentials.generate().unwrap();
+    for c in creds.get_ref() {
+        print!("[{:02x}]", c);
+    }
+    print!("\n");
+    output.write_all(creds.get_ref())?;
+        
     // Pad to get a power of 2 sized flash app, if requested.
     util::do_pad(output, post_content_pad as usize)?;
 
