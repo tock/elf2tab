@@ -116,6 +116,7 @@ fn main() {
             (opt.write_id, opt.read_ids.clone(), opt.access_ids.clone()),
             minimum_tock_kernel_version,
             add_trailing_padding,
+            opt.footers,
         )
         .unwrap();
         if opt.verbose {
@@ -154,6 +155,7 @@ fn elf_to_tbf<W: Write>(
     storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
     kernel_version: Option<(u16, u16)>,
     trailing_padding: bool,
+    footers: bool, // Whether we use a program header, allowing footers
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -354,6 +356,12 @@ fn elf_to_tbf<W: Write>(
     // Now we can create the first pass TBF header. This is mostly to get the
     // size of the header since we have to fill in some of the offsets later.
     let mut tbfheader = header::TbfHeader::new();
+    // If we are adding footers, set the binary end offset here because
+    // it will cause a program header to be inserted. This ensures the
+    // length calculations for the binary will be correct.
+    if footers {
+        tbfheader.set_binary_end_offset(0);
+    }
     let header_length = tbfheader.create(
         minimum_ram_size,
         writeable_flash_regions_count,
@@ -363,6 +371,7 @@ fn elf_to_tbf<W: Write>(
         permissions,
         storage_ids,
         kernel_version,
+        footers
     );
     // If a protected region size was passed, confirm the header will fit.
     // Otherwise, use the header size as the protected region size.
@@ -604,13 +613,21 @@ fn elf_to_tbf<W: Write>(
         }
     }
 
-    // Add the relocation data to our total length. Also include the 4 bytes for
+    // Add the relocation data o our total length. Also include the 4 bytes for
     // the relocation data length.
     binary_index += relocation_binary.len() + mem::size_of::<u32>();
 
     // That is everything that we are going to include in the app binary
     // that is covered by integrity.
-    tbfheader.set_binary_end_offset(binary_index as u32);
+
+    // Setting the binary_end_offset will insert a program header
+    // if there's currently a main header.
+    if footers {
+        if verbose {
+            println!("Footers enabled, set the binary end offset to be {}", binary_index);
+        }
+        tbfheader.set_binary_end_offset(binary_index as u32);
+    }
 
     binary_index += mem::size_of::<header::TbfFooterCredentials>();
     
@@ -648,24 +665,19 @@ fn elf_to_tbf<W: Write>(
     output.write_all(&rel_data_len)?;
     output.write_all(relocation_binary.as_ref())?;
 
-    let padding = total_size - tbfheader.binary_end_offset() as usize;
-    let padding_tlv_len = padding - 4;
-
-    let padding_credentials = header::TbfFooterCredentials {
-        base: header::TbfHeaderTlv {
-            tipe: header::TbfHeaderTypes::Credentials,
-            length: padding_tlv_len as u16
-        },
-        format: header::TbfFooterCredentialsFormat::Padding
-    };
-    print!("Padding TBF with {} bytes (0x{:04x}).\n", padding_tlv_len, padding_tlv_len);
-    let creds = padding_credentials.generate().unwrap();
-    for c in creds.get_ref() {
-        print!("[{:02x}]", c);
+    if footers {
+        let padding = total_size - tbfheader.binary_end_offset() as usize;
+        let padding_tlv_len = padding - mem::size_of::<header::TbfHeaderTlv>();
+        let padding_credentials = header::TbfFooterCredentials {
+            base: header::TbfHeaderTlv {
+                tipe: header::TbfHeaderTypes::Credentials,
+                length: padding_tlv_len as u16
+            },
+            format: header::TbfFooterCredentialsFormat::Padding
+        };
+        let creds = padding_credentials.generate().unwrap();
+        output.write_all(creds.get_ref())?;
     }
-    print!("\n");
-    output.write_all(creds.get_ref())?;
-        
     // Pad to get a power of 2 sized flash app, if requested.
     util::do_pad(output, post_content_pad as usize)?;
 

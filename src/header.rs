@@ -339,11 +339,17 @@ impl TbfHeader {
         permissions: Vec<(u32, u32)>,
         storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
         kernel_version: Option<(u16, u16)>,
+        footers: bool,
     ) -> usize {
         // Need to calculate lengths ahead of time.
         // Need the base and the program section.
-        let mut header_length = mem::size_of::<TbfHeaderBase>() + mem::size_of::<TbfHeaderProgram>();
-        print!("Header length is {}, Program length is {}\n", header_length, mem::size_of::<TbfHeaderProgram>());
+        let mut header_length = mem::size_of::<TbfHeaderBase>();
+        if footers {
+            header_length += mem::size_of::<TbfHeaderProgram>();
+        } else {
+            header_length += mem::size_of::<TbfHeaderMain>();
+        }
+        
         // If we have a package name, add that section.
         self.package_name_pad = if !package_name.is_empty() {
             // Header increases by the TLV and name length.
@@ -535,8 +541,8 @@ impl TbfHeader {
     /// element type).
     pub fn set_protected_size(&mut self, protected_size: u32) {
         match self.hdr_binary {
-            TbfHeaderBinary::Main {mut main} => main.protected_size = protected_size,
-            TbfHeaderBinary::Program {mut program} => program.protected_size = protected_size,
+            TbfHeaderBinary::Main {ref mut main} => main.protected_size = protected_size,
+            TbfHeaderBinary::Program {ref mut program} => program.protected_size = protected_size,
         }
     }
 
@@ -548,16 +554,16 @@ impl TbfHeader {
     /// Update the header with the correct offset for the _start function.
     pub fn set_init_fn_offset(&mut self, init_fn_offset: u32) {
         match self.hdr_binary {
-            TbfHeaderBinary::Main {mut main} => main.init_fn_offset = init_fn_offset,
-            TbfHeaderBinary::Program {mut program} => program.init_fn_offset = init_fn_offset,
+            TbfHeaderBinary::Main {ref mut main} => main.init_fn_offset = init_fn_offset,
+            TbfHeaderBinary::Program {ref mut program} => program.init_fn_offset = init_fn_offset,
         }
     }
 
     /// Update the header with the correct minimum RAM size
     pub fn set_minimum_ram_size(&mut self, minimum_ram_size: u32) {
         match self.hdr_binary {
-            TbfHeaderBinary::Main {mut main} => main.minimum_ram_size = minimum_ram_size,
-            TbfHeaderBinary::Program {mut program} => program.minimum_ram_size = minimum_ram_size,
+            TbfHeaderBinary::Main {ref mut main} => main.minimum_ram_size = minimum_ram_size,
+            TbfHeaderBinary::Program {ref mut program} => program.minimum_ram_size = minimum_ram_size,
         }
     }
 
@@ -565,7 +571,7 @@ impl TbfHeader {
     /// a Main Header, replace it with a Program Header.
     pub fn set_binary_end_offset(&mut self, binary_end_offset: u32) {
         match self.hdr_binary {
-            TbfHeaderBinary::Main {main} => {
+            TbfHeaderBinary::Main {ref main} => {
                 let old_header = main;
                 self.hdr_binary = TbfHeaderBinary::Program{
                     program: TbfHeaderProgram {
@@ -578,9 +584,11 @@ impl TbfHeader {
                         minimum_ram_size : old_header.minimum_ram_size,
                         binary_end_offset: binary_end_offset
                     }
-                }
+                };
             },
-            TbfHeaderBinary::Program {mut program} => program.binary_end_offset = binary_end_offset,
+            TbfHeaderBinary::Program {ref mut program} => {
+                program.binary_end_offset = binary_end_offset;
+            }
         }
     }
 
