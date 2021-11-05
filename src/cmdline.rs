@@ -35,6 +35,9 @@ pub struct Opt {
     #[structopt(long = "deterministic", help = "Produce a deterministic TAB file")]
     pub deterministic: bool,
 
+    #[structopt(long = "footers", help = "Support adding footers by using a program header")]
+    pub footers: bool,
+
     #[structopt(
         long = "minimum-ram-size",
         name = "min-ram-size",
