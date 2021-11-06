@@ -72,17 +72,6 @@ struct TbfHeaderProgram {
     binary_end_offset: u32,
 }
 
-/// The binary header is either a main header or a program
-/// header. The program header extends the main header with
-/// a binary_end_offset field, which specifies where in the
-/// TBF object the application binary ends, allowing tools
-/// to place footers after the application binary.
-#[derive(Clone, Copy, Debug)]
-enum TbfHeaderBinary {
-    Main {main: TbfHeaderMain},
-    Program {program: TbfHeaderProgram},
-}
-
 #[repr(C)]
 #[derive(Clone, Copy, Debug)]
 struct TbfHeaderWriteableFlashRegion {
@@ -278,7 +267,8 @@ impl fmt::Display for TbfHeaderKernelVersion {
 
 pub struct TbfHeader {
     hdr_base: TbfHeaderBase,
-    hdr_binary: TbfHeaderBinary,
+    hdr_main: Option<TbfHeaderMain>,
+    hdr_program: Option<TbfHeaderProgram>,
     hdr_pkg_name_tlv: Option<TbfHeaderTlv>,
     hdr_wfr: Vec<TbfHeaderWriteableFlashRegion>,
     hdr_fixed_addresses: Option<TbfHeaderFixedAddresses>,
@@ -299,18 +289,17 @@ impl TbfHeader {
                 flags: 0,
                 checksum: 0,
             },
-            hdr_binary: TbfHeaderBinary::Main {
-                main: TbfHeaderMain {
-                    base: TbfHeaderTlv {
-                        tipe: TbfHeaderTypes::Main,
-                        length: (mem::size_of::<TbfHeaderMain>() - mem::size_of::<TbfHeaderTlv>())
-                            as u16,
-                    },
-                    init_fn_offset: 0,
-                    protected_size: 0,
-                    minimum_ram_size: 0,
-                }
-            },
+            hdr_main: Some(TbfHeaderMain {
+                base: TbfHeaderTlv {
+                    tipe: TbfHeaderTypes::Main,
+                    length: (mem::size_of::<TbfHeaderMain>() - mem::size_of::<TbfHeaderTlv>())
+                        as u16,
+                },
+                init_fn_offset: 0,
+                protected_size: 0,
+                minimum_ram_size: 0,
+            }),
+            hdr_program: None,
             hdr_pkg_name_tlv: None,
             hdr_wfr: Vec::new(),
             hdr_fixed_addresses: None,
@@ -344,10 +333,9 @@ impl TbfHeader {
         // Need to calculate lengths ahead of time.
         // Need the base and the program section.
         let mut header_length = mem::size_of::<TbfHeaderBase>();
+        header_length += mem::size_of::<TbfHeaderMain>();        
         if footers {
             header_length += mem::size_of::<TbfHeaderProgram>();
-        } else {
-            header_length += mem::size_of::<TbfHeaderMain>();
         }
         
         // If we have a package name, add that section.
@@ -540,9 +528,11 @@ impl TbfHeader {
     /// not include the size of the header itself (as defined in the Main TLV
     /// element type).
     pub fn set_protected_size(&mut self, protected_size: u32) {
-        match self.hdr_binary {
-            TbfHeaderBinary::Main {ref mut main} => main.protected_size = protected_size,
-            TbfHeaderBinary::Program {ref mut program} => program.protected_size = protected_size,
+        if let Some(ref mut main) = self.hdr_main {
+            main.protected_size = protected_size;
+        }
+        if let Some(ref mut program) = self.hdr_program {
+            program.protected_size = protected_size;
         }
     }
 
@@ -553,50 +543,45 @@ impl TbfHeader {
 
     /// Update the header with the correct offset for the _start function.
     pub fn set_init_fn_offset(&mut self, init_fn_offset: u32) {
-        match self.hdr_binary {
-            TbfHeaderBinary::Main {ref mut main} => main.init_fn_offset = init_fn_offset,
-            TbfHeaderBinary::Program {ref mut program} => program.init_fn_offset = init_fn_offset,
+        if let Some(ref mut main) = self.hdr_main {
+            main.init_fn_offset = init_fn_offset;
+        }
+        if let Some(ref mut program) = self.hdr_program {
+            program.init_fn_offset = init_fn_offset;
         }
     }
 
     /// Update the header with the correct minimum RAM size
     pub fn set_minimum_ram_size(&mut self, minimum_ram_size: u32) {
-        match self.hdr_binary {
-            TbfHeaderBinary::Main {ref mut main} => main.minimum_ram_size = minimum_ram_size,
-            TbfHeaderBinary::Program {ref mut program} => program.minimum_ram_size = minimum_ram_size,
+        if let Some(ref mut main) = self.hdr_main {
+            main.minimum_ram_size = minimum_ram_size;
         }
+        if let Some(ref mut program) = self.hdr_program {
+            program.minimum_ram_size = minimum_ram_size;
+        }
+
     }
 
-    /// Update the header with the correct binary end offset. If we were using
-    /// a Main Header, replace it with a Program Header.
+    /// Update the header with the correct binary end offset. If we did
+    /// not have a Program Header, insert one. Note that this is the standard
+    /// way to insert a Program Header.
     pub fn set_binary_end_offset(&mut self, binary_end_offset: u32) {
-        match self.hdr_binary {
-            TbfHeaderBinary::Main {ref main} => {
-                let old_header = main;
-                self.hdr_binary = TbfHeaderBinary::Program{
-                    program: TbfHeaderProgram {
-                        base: TbfHeaderTlv {
-                            tipe: TbfHeaderTypes::Program,
-                            length: (mem::size_of::<TbfHeaderProgram>() - mem::size_of::<TbfHeaderTlv>()) as u16
-                        },
-                        init_fn_offset: old_header.init_fn_offset,
-                        protected_size: old_header.protected_size,
-                        minimum_ram_size : old_header.minimum_ram_size,
-                        binary_end_offset: binary_end_offset
-                    }
-                };
+        self.hdr_program = Some(TbfHeaderProgram {
+            base: TbfHeaderTlv {
+                tipe: TbfHeaderTypes::Program,
+                length: (mem::size_of::<TbfHeaderProgram>() - mem::size_of::<TbfHeaderTlv>()) as u16
             },
-            TbfHeaderBinary::Program {ref mut program} => {
-                program.binary_end_offset = binary_end_offset;
-            }
-        }
+            init_fn_offset: self.hdr_main.map_or(0, |main| main.init_fn_offset),
+            protected_size: self.hdr_main.map_or(0, |main| main.protected_size),
+            minimum_ram_size : self.hdr_main.map_or(0, |main| main.minimum_ram_size),
+            binary_end_offset: binary_end_offset
+        });
     }
-
+    
     pub fn binary_end_offset(&self) -> u32 {
-        match self.hdr_binary {
-            TbfHeaderBinary::Main {main: _} => self.hdr_base.total_size,
-            TbfHeaderBinary::Program {program} => program.binary_end_offset,
-        }
+        self.hdr_program.map_or(self.hdr_base.total_size, |program| {
+            program.binary_end_offset
+        })
     }
 
     /// Update the header with appstate values if appropriate.
@@ -617,11 +602,12 @@ impl TbfHeader {
 
         // Write all bytes to an in-memory file for the header.
         header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_base) })?;
-        match self.hdr_binary {
-            TbfHeaderBinary::Main {main} => {header_buf.write_all(unsafe { util::as_byte_slice(&main) })?;},
+        header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_main) })?;
 
-            TbfHeaderBinary::Program {program} => {header_buf.write_all(unsafe { util::as_byte_slice(&program) })?;},
+        if let Some(program) = self.hdr_program {
+            header_buf.write_all(unsafe { util::as_byte_slice(&program) })?;
         }
+        
         if !self.package_name.is_empty() {
             header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_pkg_name_tlv) })?;
             header_buf.write_all(self.package_name.as_ref())?;
@@ -718,10 +704,14 @@ impl fmt::Display for TbfHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "TBF Header:")?;
         write!(f, "{}", self.hdr_base)?;
-        write!(f, "{:?}", self.hdr_binary)?;
+        write!(f, "{:?}", self.hdr_main)?;
+        self.hdr_program
+            .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
+        
         for wfr in &self.hdr_wfr {
             write!(f, "{}", wfr)?;
         }
+        
         self.hdr_fixed_addresses
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         self.hdr_permissions
