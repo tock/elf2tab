@@ -116,7 +116,8 @@ fn main() {
             (opt.write_id, opt.read_ids.clone(), opt.access_ids.clone()),
             minimum_tock_kernel_version,
             add_trailing_padding,
-            opt.footers,
+            opt.program,
+            opt.version,
         )
         .unwrap();
         if opt.verbose {
@@ -155,7 +156,8 @@ fn elf_to_tbf<W: Write>(
     storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
     kernel_version: Option<(u16, u16)>,
     trailing_padding: bool,
-    footers: bool, // Whether we use a program header, allowing footers
+    program: bool, // Whether we use a program header, allowing footers
+    version: u32
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -359,9 +361,11 @@ fn elf_to_tbf<W: Write>(
     // If we are adding footers, set the binary end offset here because
     // it will cause a program header to be inserted. This ensures the
     // length calculations for the binary will be correct.
-    if footers {
+    if program {
         tbfheader.set_binary_end_offset(0);
+        tbfheader.set_version(version);
     }
+
     let header_length = tbfheader.create(
         minimum_ram_size,
         writeable_flash_regions_count,
@@ -371,7 +375,7 @@ fn elf_to_tbf<W: Write>(
         permissions,
         storage_ids,
         kernel_version,
-        footers
+        program
     );
     // If a protected region size was passed, confirm the header will fit.
     // Otherwise, use the header size as the protected region size.
@@ -622,9 +626,9 @@ fn elf_to_tbf<W: Write>(
 
     // Setting the binary_end_offset will insert a program header
     // if there's currently a main header.
-    if footers {
+    if program {
         if verbose {
-            println!("Footers enabled, set the binary end offset to be {}", binary_index);
+            println!("Program header: footers enabled, set the binary end offset to be {}", binary_index);
         }
         tbfheader.set_binary_end_offset(binary_index as u32);
     }
@@ -665,7 +669,7 @@ fn elf_to_tbf<W: Write>(
     output.write_all(&rel_data_len)?;
     output.write_all(relocation_binary.as_ref())?;
 
-    if footers {
+    if program {
         let padding = total_size - tbfheader.binary_end_offset() as usize;
         let padding_tlv_len = padding - mem::size_of::<header::TbfHeaderTlv>();
         let padding_credentials = header::TbfFooterCredentials {

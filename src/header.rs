@@ -70,6 +70,7 @@ struct TbfHeaderProgram {
     protected_size: u32,
     minimum_ram_size: u32,
     binary_end_offset: u32,
+    version: u32,
 }
 
 #[repr(C)]
@@ -173,9 +174,10 @@ impl fmt::Display for TbfHeaderProgram {
         init_fn_offset: {0:>8} {0:>#10X}
         protected_size: {1:>8} {1:>#10X}
       minimum_ram_size: {2:>8} {2:>#10X}
-     binary_end_offset: {3:>8} {2:>#10X}",
+     binary_end_offset: {3:>8} {3:>#10X}
+               version: {4:>8} {4:>#10X}",
             self.init_fn_offset, self.protected_size, self.minimum_ram_size,
-            self.binary_end_offset,
+            self.binary_end_offset, self.version
         )
     }
 }
@@ -574,7 +576,8 @@ impl TbfHeader {
             init_fn_offset: self.hdr_main.map_or(0, |main| main.init_fn_offset),
             protected_size: self.hdr_main.map_or(0, |main| main.protected_size),
             minimum_ram_size : self.hdr_main.map_or(0, |main| main.minimum_ram_size),
-            binary_end_offset: binary_end_offset
+            binary_end_offset: binary_end_offset,
+            version: 0
         });
     }
     
@@ -584,6 +587,12 @@ impl TbfHeader {
         })
     }
 
+    pub fn set_version(&mut self, version: u32) {
+        if let Some(ref mut program) = self.hdr_program {
+            program.version = version;
+        }
+    }
+    
     /// Update the header with appstate values if appropriate.
     pub fn set_writeable_flash_region_values(&mut self, offset: u32, size: u32) {
         for wfr in &mut self.hdr_wfr {
