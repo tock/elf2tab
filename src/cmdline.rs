@@ -38,11 +38,11 @@ pub struct Opt {
     #[structopt(long = "program", help = "Use a program header")]
     pub program: bool,
 
-    #[structopt(long = "version",
+    #[structopt(long = "app-version",
                 help = "Set the version number",
-                default_value = "0",
+                default_value = "19",
     )]
-    pub version: u32,
+    pub app_version: u32,
     
     #[structopt(
         long = "minimum-ram-size",

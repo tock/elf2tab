@@ -70,7 +70,7 @@ struct TbfHeaderProgram {
     protected_size: u32,
     minimum_ram_size: u32,
     binary_end_offset: u32,
-    version: u32,
+    app_version: u32,
 }
 
 #[repr(C)]
@@ -175,9 +175,9 @@ impl fmt::Display for TbfHeaderProgram {
         protected_size: {1:>8} {1:>#10X}
       minimum_ram_size: {2:>8} {2:>#10X}
      binary_end_offset: {3:>8} {3:>#10X}
-               version: {4:>8} {4:>#10X}",
+           app_version: {4:>8} {4:>#10X}",
             self.init_fn_offset, self.protected_size, self.minimum_ram_size,
-            self.binary_end_offset, self.version
+            self.binary_end_offset, self.app_version
         )
     }
 }
@@ -330,13 +330,13 @@ impl TbfHeader {
         permissions: Vec<(u32, u32)>,
         storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
         kernel_version: Option<(u16, u16)>,
-        footers: bool,
+        program: bool,
     ) -> usize {
         // Need to calculate lengths ahead of time.
         // Need the base and the program section.
         let mut header_length = mem::size_of::<TbfHeaderBase>();
         header_length += mem::size_of::<TbfHeaderMain>();        
-        if footers {
+        if program {
             header_length += mem::size_of::<TbfHeaderProgram>();
         }
         
@@ -577,7 +577,7 @@ impl TbfHeader {
             protected_size: self.hdr_main.map_or(0, |main| main.protected_size),
             minimum_ram_size : self.hdr_main.map_or(0, |main| main.minimum_ram_size),
             binary_end_offset: binary_end_offset,
-            version: 0
+            app_version: 0
         });
     }
     
@@ -587,9 +587,9 @@ impl TbfHeader {
         })
     }
 
-    pub fn set_version(&mut self, version: u32) {
+    pub fn set_app_version(&mut self, version: u32) {
         if let Some(ref mut program) = self.hdr_program {
-            program.version = version;
+            program.app_version = version;
         }
     }
     

@@ -117,7 +117,7 @@ fn main() {
             minimum_tock_kernel_version,
             add_trailing_padding,
             opt.program,
-            opt.version,
+            opt.app_version,
         )
         .unwrap();
         if opt.verbose {
@@ -157,7 +157,7 @@ fn elf_to_tbf<W: Write>(
     kernel_version: Option<(u16, u16)>,
     trailing_padding: bool,
     program: bool, // Whether we use a program header, allowing footers
-    version: u32
+    app_version: u32
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -363,7 +363,7 @@ fn elf_to_tbf<W: Write>(
     // length calculations for the binary will be correct.
     if program {
         tbfheader.set_binary_end_offset(0);
-        tbfheader.set_version(version);
+        tbfheader.set_app_version(app_version);
     }
 
     let header_length = tbfheader.create(
@@ -631,6 +631,7 @@ fn elf_to_tbf<W: Write>(
             println!("Program header: footers enabled, set the binary end offset to be {}", binary_index);
         }
         tbfheader.set_binary_end_offset(binary_index as u32);
+        tbfheader.set_app_version(app_version);
     }
 
     binary_index += mem::size_of::<header::TbfFooterCredentials>();
