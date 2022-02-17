@@ -71,7 +71,9 @@ fn main() {
     for elf_file in opt.input {
         let (tbf_path, architecture) = if let Some(ref architecture) = elf_file.architecture {
             (
-                elf_file.path.with_extension(format!("{architecture}.tbf")),
+                elf_file
+                    .path
+                    .with_extension(format!("{}.tbf", architecture)),
                 architecture.clone(),
             )
         } else {
@@ -140,7 +142,7 @@ fn main() {
 
         // Add the file to the TAB tar file.
         outfile.seek(io::SeekFrom::Start(0)).unwrap();
-        tab.append_file(format!("{architecture}.tbf"), &mut outfile)
+        tab.append_file(format!("{}.tbf", architecture), &mut outfile)
             .unwrap();
     }
 }
