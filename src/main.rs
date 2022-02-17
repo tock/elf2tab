@@ -69,25 +69,7 @@ fn main() {
     // Iterate all input elfs. Convert them to Tock friendly binaries and then
     // add them to the TAB file.
     for elf_file in opt.input {
-        let (tbf_path, architecture) = if let Some(ref architecture) = elf_file.architecture {
-            (
-                elf_file
-                    .path
-                    .with_extension(format!("{}.tbf", architecture)),
-                architecture.clone(),
-            )
-        } else {
-            (
-                elf_file.path.with_extension("tbf"),
-                elf_file
-                    .path
-                    .file_name()
-                    .unwrap()
-                    .to_str()
-                    .unwrap()
-                    .to_string(),
-            )
-        };
+        let tbf_path = elf_file.path.with_extension("tbf");
 
         let elffile = elf::File::open_path(&elf_file.path).expect("Could not open the .elf file.");
 
@@ -142,6 +124,17 @@ fn main() {
 
         // Add the file to the TAB tar file.
         outfile.seek(io::SeekFrom::Start(0)).unwrap();
+        let architecture = if let Some(ref architecture) = elf_file.architecture {
+            architecture.clone()
+        } else {
+            elf_file
+                .path
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string()
+        };
         tab.append_file(format!("{}.tbf", architecture), &mut outfile)
             .unwrap();
     }
