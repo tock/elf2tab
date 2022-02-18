@@ -23,9 +23,15 @@ where
     Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
 }
 
+/// Helper struct for keeping track of the ELF files to convert and an optional
+/// architecture string.
 #[derive(Debug)]
 pub struct ElfFile {
+    /// Caller must provide a path to the ELF.
     pub path: PathBuf,
+    /// Callers may optionally include the target architecture for that ELF.
+    /// Otherwise the architecture will be inferred from the name of the ELF
+    /// file.
     pub architecture: Option<String>,
 }
 

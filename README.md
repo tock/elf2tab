@@ -11,7 +11,7 @@ Usage
 
 ```
 USAGE:
-    elf2tab [FLAGS] [OPTIONS] ELF...
+    elf2tab [FLAGS] [OPTIONS] ELF[,ARCHITECTURE]...
 Converts Tock userspace programs from .elf files to Tock Application Bundles.
 
 FLAGS:
@@ -36,7 +36,7 @@ OPTIONS:
         --write_id <write_id>                              A storage ID used for writing data
 
 ARGS:
-    <elf>...    application file(s) to package
+    <elf[,architecture]>...    application file(s) to package
 ```
 
 For example, converting a "blink" app from a compiled .elf file (for a Cortex-M4
