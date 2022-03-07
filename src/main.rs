@@ -68,10 +68,33 @@ fn main() {
 
     // Iterate all input elfs. Convert them to Tock friendly binaries and then
     // add them to the TAB file.
-    for elf_path in opt.input {
-        let tbf_path = elf_path.with_extension("tbf");
+    for elf_file in opt.input {
+        let elffile = elf::File::open_path(&elf_file.path).expect("Could not open the .elf file.");
 
-        let elffile = elf::File::open_path(&elf_path).expect("Could not open the .elf file.");
+        // The TBF will be written to the same place as the ELF, with a .tbf
+        // extension.
+        let tbf_path = elf_file.path.with_extension("tbf");
+
+        // Get the name of the architecture for the TBF. This will be used to
+        // name the TBF in the TAB, as the file name is expected to be
+        // `<architecture>.tbf`.
+        let architecture = if let Some(ref architecture) = elf_file.architecture {
+            // The caller of elf2tab explicitly told us the architecture via
+            // command line arguments.
+            architecture.clone()
+        } else {
+            // Otherwise, we must assume that the elf was named as
+            // `<architecture>.elf` and use the base name as the architecture.
+            elf_file
+                .path
+                .file_name()
+                .unwrap()
+                .to_str()
+                .unwrap()
+                .to_string()
+        };
+        // Use the architecture to name the TBF in the TAB.
+        let tab_tbf_name = format!("{}.tbf", architecture);
 
         if opt.output.clone() == tbf_path.clone() {
             panic!(
@@ -124,8 +147,7 @@ fn main() {
 
         // Add the file to the TAB tar file.
         outfile.seek(io::SeekFrom::Start(0)).unwrap();
-        tab.append_file(tbf_path.file_name().unwrap(), &mut outfile)
-            .unwrap();
+        tab.append_file(tab_tbf_name, &mut outfile).unwrap();
     }
 }
 
