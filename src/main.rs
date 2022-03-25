@@ -168,7 +168,7 @@ fn elf_to_tbf<W: Write>(
     output: &mut W,
     package_name: Option<String>,
     verbose: bool,
-    stack_len: u32,
+    stack_len: Option<u32>,
     app_heap_len: u32,
     kernel_heap_len: u32,
     protected_region_size_arg: Option<u32>,
@@ -186,6 +186,20 @@ fn elf_to_tbf<W: Write>(
         sections_sort.push((i, section.shdr.offset as usize));
     }
     sections_sort.sort_by_key(|s| s.1);
+
+    let stack_len = stack_len
+        // not provided, read from binary
+        .or_else(|| {
+            input.sections.iter().find_map(|section| {
+                if section.shdr.name == ".stack" {
+                    Some(section.shdr.size as u32)
+                } else {
+                    None
+                }
+            })
+        })
+        // nothing in binary, use default
+        .unwrap_or(2048);
 
     // Keep track of how much RAM this app will need.
     let mut minimum_ram_size: u32 = 0;
