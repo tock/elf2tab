@@ -95,10 +95,9 @@ pub struct Opt {
     #[structopt(
         long = "stack",
         name = "stack-size",
-        default_value = "2048",
         help = "in bytes"
     )]
-    pub stack_size: u32,
+    pub stack_size: Option<u32>,
 
     #[structopt(
         long = "app-heap",
