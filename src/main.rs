@@ -1,3 +1,4 @@
+use sha2::{Digest, Sha256};
 use std::cmp;
 use std::fmt::Write as fmtwrite;
 use std::fs;
@@ -10,6 +11,7 @@ use util::{align_to, amount_alignment_needed};
 mod cmdline;
 mod header;
 mod util;
+
 
 fn main() {
     let opt = cmdline::Opt::from_args();
@@ -103,9 +105,11 @@ fn main() {
         if opt.verbose {
             println!("Creating {:?}", tbf_path);
         }
+
+        let mut output_vector = Vec::<u8>::new();
         elf_to_tbf(
             &elffile,
-            &mut outfile,
+            &mut output_vector,
             opt.package_name.clone(),
             opt.verbose,
             opt.stack_size,
@@ -118,6 +122,7 @@ fn main() {
             add_trailing_padding,
             opt.program,
             opt.app_version,
+            opt.sha256_enable,
         )
         .unwrap();
         if opt.verbose {
@@ -145,7 +150,7 @@ fn main() {
 /// - Sections that are writeable flash regions include .wfr in their name.
 fn elf_to_tbf<W: Write>(
     input: &elf::File,
-    output: &mut W,
+    output: &mut Vec::<u8>,
     package_name: Option<String>,
     verbose: bool,
     stack_len: u32,
@@ -157,7 +162,8 @@ fn elf_to_tbf<W: Write>(
     kernel_version: Option<(u16, u16)>,
     trailing_padding: bool,
     program: bool, // Whether we use a program header, allowing footers
-    app_version: u32
+    app_version: u32,
+    sha256: bool,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -607,7 +613,7 @@ fn elf_to_tbf<W: Write>(
                 name,
                 binary_index + mem::size_of::<u32>() + rel_data.len(),
                 rel_data.len(),
-            ); 
+            );
         }
         if !rel_data.is_empty() && amount_alignment_needed(binary_index as u32, 4) != 0 {
             println!(
@@ -617,7 +623,7 @@ fn elf_to_tbf<W: Write>(
         }
     }
 
-    // Add the relocation data o our total length. Also include the 4 bytes for
+    // Add the relocation data to our total length. Also include the 4 bytes for
     // the relocation data length.
     binary_index += relocation_binary.len() + mem::size_of::<u32>();
 
@@ -632,10 +638,19 @@ fn elf_to_tbf<W: Write>(
         }
         tbfheader.set_binary_end_offset(binary_index as u32);
         tbfheader.set_app_version(app_version);
+
+        // Padding footer is required
+        binary_index += mem::size_of::<header::TbfHeadertlv>();
+        binary_index += mem::size_of::<header::TbfFooterCredentialsType>();
+
+        // Process optional footers
+        if sha256 {
+            binary_index += mem::size_of::<header::TbfHeaderTlv>();
+            binary_index += mem::size_of::<header::TbfFooterCredentialsType>();
+            binary_index += 32; // SHA256 is 32 bytes long
+        }
     }
 
-    binary_index += mem::size_of::<header::TbfFooterCredentials>();
-    
     let post_content_pad = if trailing_padding {
         // If trailing padding is requested, we need to pad the binary to a
         // power of 2 in size, and make sure it is at least 512 bytes in size.
@@ -671,14 +686,20 @@ fn elf_to_tbf<W: Write>(
     output.write_all(relocation_binary.as_ref())?;
 
     if program {
+        if sha256 {
+            let mut hasher = Sha256::new();
+        }
+
+
         let padding = total_size - tbfheader.binary_end_offset() as usize;
         let padding_tlv_len = padding - mem::size_of::<header::TbfHeaderTlv>();
         let padding_credentials = header::TbfFooterCredentials {
             base: header::TbfHeaderTlv {
                 tipe: header::TbfHeaderTypes::Credentials,
-                length: padding_tlv_len as u16
+                length: padding_tlv_len as u16,
             },
-            format: header::TbfFooterCredentialsFormat::Padding
+            format: header::TbfFooterCredentialsType::Padding,
+            data: Vec::<u8>::new(),
         };
         let creds = padding_credentials.generate().unwrap();
         output.write_all(creds.get_ref())?;

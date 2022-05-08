@@ -43,7 +43,7 @@ pub struct Opt {
                 default_value = "19",
     )]
     pub app_version: u32,
-    
+
     #[structopt(
         long = "minimum-ram-size",
         name = "min-ram-size",
@@ -154,6 +154,29 @@ pub struct Opt {
         help = "The minimum kernel minor version that the app requires"
     )]
     pub kernel_minor: Option<u16>,
+
+    #[structopt(
+        long = "sha256",
+        name = "sha256-add",
+        help = "Add a SHA256 hash credential to each TAB"
+    )]
+    pub sha256_enable: bool,
+
+    #[structopt(
+        long = "sha512",
+        name = "sha512-add",
+        help = "Add a SHA512 hash credential to each TAB"
+    )]
+    pub sha512_enable: bool,
+
+    #[structopt(
+        long = "rsa4096",
+        name = "rsa4096-add",
+        help = "Add an 4096-bit RSA signature credential using this private key",
+        multiple = true,
+    )]
+    pub rsa4096_key: Option<PathBuf>,
+
 }
 
 mod test {

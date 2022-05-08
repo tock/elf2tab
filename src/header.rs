@@ -27,13 +27,16 @@ pub enum TbfHeaderTypes {
 #[repr(u32)]
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
-pub enum TbfFooterCredentialsFormat {
+pub enum TbfFooterCredentialsType {
     Padding = 0,
     CleartextID = 1,
     Rsa3072Key = 2,
     Rsa4096Key = 3,
     Rsa3072KeyWithID = 4,
     Rsa4096KeyWithID = 5,
+    SHA256 = 6,
+    SHA384 = 7,
+    SHA512 = 8,
 }
 
 #[repr(C)]
@@ -125,16 +128,21 @@ struct TbfHeaderKernelVersion {
 }
 
 #[repr(C)]
-#[derive(Clone, Copy, Debug)]
+#[derive(Debug)]
 pub struct TbfFooterCredentials {
     pub base: TbfHeaderTlv,
-    pub format: TbfFooterCredentialsFormat,
+    pub format: TbfFooterCredentialsType,
+    pub data: Vec<u8>,
 }
 
 impl TbfFooterCredentials {
     pub fn generate(&self) -> io::Result<io::Cursor<vec::Vec<u8>>> {
         let mut header_buf = io::Cursor::new(Vec::new());
-        header_buf.write_all(unsafe {util::as_byte_slice(self)})?;
+        header_buf.write_all(unsafe {util::as_byte_slice(&self.base)})?;
+        header_buf.write_all(unsafe {util::as_byte_slice(&self.format)})?;
+        for b in &self.data {
+            header_buf.write_all(unsafe {util::as_byte_slice(b)})?;
+        }
         Ok(header_buf)
     }
 }
@@ -335,11 +343,11 @@ impl TbfHeader {
         // Need to calculate lengths ahead of time.
         // Need the base and the program section.
         let mut header_length = mem::size_of::<TbfHeaderBase>();
-        header_length += mem::size_of::<TbfHeaderMain>();        
+        header_length += mem::size_of::<TbfHeaderMain>();
         if program {
             header_length += mem::size_of::<TbfHeaderProgram>();
         }
-        
+
         // If we have a package name, add that section.
         self.package_name_pad = if !package_name.is_empty() {
             // Header increases by the TLV and name length.
@@ -580,7 +588,7 @@ impl TbfHeader {
             app_version: 0
         });
     }
-    
+
     pub fn binary_end_offset(&self) -> u32 {
         self.hdr_program.map_or(self.hdr_base.total_size, |program| {
             program.binary_end_offset
@@ -592,7 +600,7 @@ impl TbfHeader {
             program.app_version = version;
         }
     }
-    
+
     /// Update the header with appstate values if appropriate.
     pub fn set_writeable_flash_region_values(&mut self, offset: u32, size: u32) {
         for wfr in &mut self.hdr_wfr {
@@ -616,7 +624,7 @@ impl TbfHeader {
         if let Some(program) = self.hdr_program {
             header_buf.write_all(unsafe { util::as_byte_slice(&program) })?;
         }
-        
+
         if !self.package_name.is_empty() {
             header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_pkg_name_tlv) })?;
             header_buf.write_all(self.package_name.as_ref())?;
@@ -716,11 +724,11 @@ impl fmt::Display for TbfHeader {
         write!(f, "{:?}", self.hdr_main)?;
         self.hdr_program
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
-        
+
         for wfr in &self.hdr_wfr {
             write!(f, "{}", wfr)?;
         }
-        
+
         self.hdr_fixed_addresses
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         self.hdr_permissions
