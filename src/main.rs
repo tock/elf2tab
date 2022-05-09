@@ -1,4 +1,4 @@
-use sha2::{Digest, Sha256};
+//use sha2::{Digest, Sha256};
 use std::cmp;
 use std::fmt::Write as fmtwrite;
 use std::fs;
@@ -105,7 +105,9 @@ fn main() {
         if opt.verbose {
             println!("Creating {:?}", tbf_path);
         }
-
+        // First write the TBF into a vector, to allow each read access
+        // for generating credentials; once it's written to the vector, flush
+        // it to a file.
         let mut output_vector = Vec::<u8>::new();
         elf_to_tbf(
             &elffile,
@@ -129,6 +131,14 @@ fn main() {
             println!("");
         }
 
+        match outfile.write_all(output_vector.as_ref()) {
+            Err(e) => {
+                println!("Failed to write TBF: {:?}", e);
+                return;
+            }
+            _ => {}
+        }
+
         // Add the file to the TAB tar file.
         outfile.seek(io::SeekFrom::Start(0)).unwrap();
         tab.append_file(tbf_path.file_name().unwrap(), &mut outfile)
@@ -148,7 +158,7 @@ fn main() {
 ///   different virtual address will be in RAM and should count towards minimum
 ///   required RAM.
 /// - Sections that are writeable flash regions include .wfr in their name.
-fn elf_to_tbf<W: Write>(
+fn elf_to_tbf(
     input: &elf::File,
     output: &mut Vec::<u8>,
     package_name: Option<String>,
@@ -640,7 +650,7 @@ fn elf_to_tbf<W: Write>(
         tbfheader.set_app_version(app_version);
 
         // Padding footer is required
-        binary_index += mem::size_of::<header::TbfHeadertlv>();
+        binary_index += mem::size_of::<header::TbfHeaderTlv>();
         binary_index += mem::size_of::<header::TbfFooterCredentialsType>();
 
         // Process optional footers
@@ -686,13 +696,31 @@ fn elf_to_tbf<W: Write>(
     output.write_all(relocation_binary.as_ref())?;
 
     if program {
+        let footers_len = total_size - tbfheader.binary_end_offset() as usize;
+        let mut footer_space_remaining = footers_len;
         if sha256 {
-            let mut hasher = Sha256::new();
+            // Total length
+            let sha256_len = mem::size_of::<header::TbfHeaderTlv>() +
+                             mem::size_of::<header::TbfFooterCredentialsType>() +
+                             32; // SHA256 is 32 bytes long
+            // Length in the TLV field
+            let sha256_tlv_len = sha256_len - mem::size_of::<header::TbfHeaderTlv>();
+
+            let hash: [u8; 32] = [0; 32];
+            let sha_credentials = header::TbfFooterCredentials {
+                base: header::TbfHeaderTlv {
+                    tipe: header::TbfHeaderTypes::Credentials,
+                    length: sha256_tlv_len as u16,
+                },
+                format: header::TbfFooterCredentialsType::SHA256,
+                data: hash.to_vec(),
+            };
+            output.write_all(sha_credentials.generate().unwrap().get_ref())?;
+            footer_space_remaining -= sha256_len;
         }
 
-
-        let padding = total_size - tbfheader.binary_end_offset() as usize;
-        let padding_tlv_len = padding - mem::size_of::<header::TbfHeaderTlv>();
+        let padding_len = footer_space_remaining;
+        let padding_tlv_len = padding_len - mem::size_of::<header::TbfHeaderTlv>();
         let padding_credentials = header::TbfFooterCredentials {
             base: header::TbfHeaderTlv {
                 tipe: header::TbfHeaderTypes::Credentials,
@@ -703,6 +731,7 @@ fn elf_to_tbf<W: Write>(
         };
         let creds = padding_credentials.generate().unwrap();
         output.write_all(creds.get_ref())?;
+        footer_space_remaining -= padding_len;
     }
     // Pad to get a power of 2 sized flash app, if requested.
     util::do_pad(output, post_content_pad as usize)?;
