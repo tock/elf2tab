@@ -9,6 +9,10 @@ license = "MIT"
 readme = "README.md"
 keywords = ["elf", "code", "tock", "compile"]
 
+[[bin]]
+name = "elf2tab"
+path = "src/main.rs"
+
 [dependencies]
 chrono = "0.4.2"
 tar = "0.4.15"
