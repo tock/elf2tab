@@ -1,10 +1,11 @@
-use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256, Sha512};
 use std::cmp;
 use std::fmt::Write as fmtwrite;
 use std::fs;
 use std::io;
 use std::io::{Seek, Write};
 use std::mem;
+use std::path::PathBuf;
 use structopt::StructOpt;
 use util::{align_to, amount_alignment_needed};
 
@@ -125,6 +126,8 @@ fn main() {
             opt.program,
             opt.app_version,
             opt.sha256_enable,
+            opt.sha512_enable,
+            &opt.rsa4096_key,
         )
         .unwrap();
         if opt.verbose {
@@ -174,6 +177,8 @@ fn elf_to_tbf(
     program: bool, // Whether we use a program header, allowing footers
     app_version: u32,
     sha256: bool,
+    sha512: bool,
+    _rsa4096_key:  &Option<PathBuf>,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -721,6 +726,29 @@ fn elf_to_tbf(
             output.write_all(sha_credentials.generate().unwrap().get_ref())?;
             footer_space_remaining -= sha256_len;
         }
+        
+        if sha512 {
+            // Total length
+            let sha512_len = mem::size_of::<header::TbfHeaderTlv>() +
+                             mem::size_of::<header::TbfFooterCredentialsType>() +
+                             64; // SHA256 is 32 bytes long
+            // Length in the TLV field
+            let sha512_tlv_len = sha512_len - mem::size_of::<header::TbfHeaderTlv>();
+
+            let mut hasher = Sha512::new();
+            hasher.update(&output[0..tbfheader.binary_end_offset() as usize]);
+            let result = hasher.finalize();
+            let sha_credentials = header::TbfFooterCredentials {
+                base: header::TbfHeaderTlv {
+                    tipe: header::TbfHeaderTypes::Credentials,
+                    length: sha512_tlv_len as u16,
+                },
+                format: header::TbfFooterCredentialsType::SHA512,
+                data: result.to_vec(),
+            };
+            output.write_all(sha_credentials.generate().unwrap().get_ref())?;
+            footer_space_remaining -= sha512_len;
+        }
 
         let padding_len = footer_space_remaining;
         let padding_tlv_len = padding_len - mem::size_of::<header::TbfHeaderTlv>();
@@ -734,7 +762,7 @@ fn elf_to_tbf(
         };
         let creds = padding_credentials.generate().unwrap();
         output.write_all(creds.get_ref())?;
-        footer_space_remaining -= padding_len;
+        //footer_space_remaining -= padding_len;
     }
     // Pad to get a power of 2 sized flash app, if requested.
     util::do_pad(output, post_content_pad as usize)?;
