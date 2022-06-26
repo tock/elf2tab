@@ -1,4 +1,4 @@
-//use sha2::{Digest, Sha256};
+use sha2::{Digest, Sha256};
 use std::cmp;
 use std::fmt::Write as fmtwrite;
 use std::fs;
@@ -696,6 +696,7 @@ fn elf_to_tbf(
     output.write_all(relocation_binary.as_ref())?;
 
     if program {
+        println!("Running elf2tab in program header mode.");
         let footers_len = total_size - tbfheader.binary_end_offset() as usize;
         let mut footer_space_remaining = footers_len;
         if sha256 {
@@ -706,14 +707,16 @@ fn elf_to_tbf(
             // Length in the TLV field
             let sha256_tlv_len = sha256_len - mem::size_of::<header::TbfHeaderTlv>();
 
-            let hash: [u8; 32] = [0; 32];
+            let mut hasher = Sha256::new();
+            hasher.update(&output[0..tbfheader.binary_end_offset() as usize]);
+            let result = hasher.finalize();
             let sha_credentials = header::TbfFooterCredentials {
                 base: header::TbfHeaderTlv {
                     tipe: header::TbfHeaderTypes::Credentials,
                     length: sha256_tlv_len as u16,
                 },
                 format: header::TbfFooterCredentialsType::SHA256,
-                data: hash.to_vec(),
+                data: result.to_vec(),
             };
             output.write_all(sha_credentials.generate().unwrap().get_ref())?;
             footer_space_remaining -= sha256_len;
