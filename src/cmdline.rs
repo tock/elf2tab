@@ -170,13 +170,18 @@ pub struct Opt {
     pub sha512_enable: bool,
 
     #[structopt(
-        long = "rsa4096",
-        name = "rsa4096-add",
+        long = "rsa4096-private",
+        name = "rsa4096-private-key",
         help = "Add an 4096-bit RSA signature credential using this private key",
-        multiple = true,
     )]
-    pub rsa4096_key: Option<PathBuf>,
-
+    pub rsa4096_private_key: Option<PathBuf>,
+    
+    #[structopt(
+        long = "rsa4096-public",
+        name = "rsa4096-public-key",
+        help = "Add an 4096-bit RSA signature credential containing this public key",
+    )]
+    pub rsa4096_public_key: Option<PathBuf>,
 }
 
 mod test {
