@@ -759,6 +759,7 @@ fn elf_to_tbf(
             };
             output.write_all(sha_credentials.generate().unwrap().get_ref())?;
             footer_space_remaining -= sha256_len;
+            println!("Added SHA256 credential.");
         }
         
         if sha512 {
@@ -782,6 +783,7 @@ fn elf_to_tbf(
             };
             output.write_all(sha_credentials.generate().unwrap().get_ref())?;
             footer_space_remaining -= sha512_len;
+            println!("Added SHA512 credential.");
         }
         
         if rsa4096_private_key.is_some() && rsa4096_public_key.is_none() {
@@ -821,8 +823,7 @@ fn elf_to_tbf(
             let public_key = rsa_der::public_key_from_der(&public_key_der);
 
             let public_modulus = match public_key {
-                Ok((n, e)) => {
-                    println!("Parsed key to n={:?}, e={:?}", n, e);
+                Ok((n, _)) => {
                     n
                 },
                 Err(_) => {
@@ -837,12 +838,11 @@ fn elf_to_tbf(
             }
             let rng = rand::SystemRandom::new();
             let mut signature = vec![0; key_pair.public_modulus_len()];
-            let res = key_pair.sign(&signature::RSA_PKCS1_SHA512, &rng,
+            let _res = key_pair.sign(&signature::RSA_PKCS1_SHA512, &rng,
                                     &output[0..tbfheader.binary_end_offset() as usize],
                                     &mut signature).map_err(|e| {
                                         panic!("Could not generate RSA4096 signature: {:?}", e);
                                     });
-            print!("Signing: {:?}", res);
             let mut credentials = vec![0; 1024];
             for i in 0..key_pair.public_modulus_len() {
                 credentials[i] = public_modulus[i];
@@ -851,7 +851,7 @@ fn elf_to_tbf(
                 let index = i + key_pair.public_modulus_len();
                 credentials[index] = signature[i];
             }
-            println!("Generated PKCS#1v1.5 RSA4096 signature credential: {:?}", credentials);
+
             let rsa4096_credentials = header::TbfFooterCredentials {
                 base: header::TbfHeaderTlv {
                     tipe: header::TbfHeaderTypes::Credentials,
@@ -863,6 +863,7 @@ fn elf_to_tbf(
 
             output.write_all(rsa4096_credentials.generate().unwrap().get_ref())?;
             footer_space_remaining -= rsa4096_len;
+            println!("Added PKCS#1v1.5 RSA4096 signature credential.");
         }
 
         let padding_len = footer_space_remaining;
