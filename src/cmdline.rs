@@ -1,11 +1,12 @@
 //! Command line parser setup for elf2tab.
 
 use std::error::Error;
+use std::ffi::OsStr;
 use std::path::PathBuf;
 use structopt::StructOpt;
 
 fn usage() -> &'static str {
-    "elf2tab [FLAGS] [OPTIONS] ELF...
+    "elf2tab [FLAGS] [OPTIONS] ELF[,ARCHITECTURE]...
 Converts Tock userspace programs from .elf files to Tock Application Bundles."
 }
 
@@ -20,6 +21,34 @@ where
         .find(',')
         .ok_or_else(|| format!("invalid number,option: no `,` found in `{}`", s))?;
     Ok((s[..pos].parse()?, s[pos + 1..].parse()?))
+}
+
+/// Helper struct for keeping track of the ELF files to convert and an optional
+/// architecture string.
+#[derive(Debug)]
+pub struct ElfFile {
+    /// Caller must provide a path to the ELF.
+    pub path: PathBuf,
+    /// Callers may optionally include the target architecture for that ELF.
+    /// Otherwise the architecture will be inferred from the name of the ELF
+    /// file.
+    pub architecture: Option<String>,
+}
+
+impl From<&OsStr> for ElfFile {
+    fn from(value: &OsStr) -> Self {
+        let mut elf_file = ElfFile {
+            path: value.into(),
+            architecture: None,
+        };
+        if let Some(s) = value.to_str() {
+            if let Some(index) = s.rfind(',') {
+                elf_file.path = PathBuf::from(&s[0..index]);
+                elf_file.architecture = Some(String::from(&s[index + 1..]));
+            }
+        }
+        elf_file
+    }
 }
 
 #[derive(StructOpt, Debug)]
@@ -75,10 +104,9 @@ pub struct Opt {
     #[structopt(
         long = "stack",
         name = "stack-size",
-        default_value = "2048",
         help = "in bytes"
     )]
-    pub stack_size: u32,
+    pub stack_size: Option<u32>,
 
     #[structopt(
         long = "app-heap",
@@ -97,12 +125,12 @@ pub struct Opt {
     pub kernel_heap_size: u32,
 
     #[structopt(
-        name = "elf",
+        name = "elf[,architecture]",
         help = "application file(s) to package",
         parse(from_os_str),
         required = true
     )]
-    pub input: Vec<PathBuf>,
+    pub input: Vec<ElfFile>,
 
     #[structopt(
         long = "protected-region-size",
@@ -192,7 +220,7 @@ mod test {
     use structopt::StructOpt;
 
     #[test]
-    // elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=[<filename>]] <elf>...
+    // elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=[<filename>]] <elf[,architecture]>...
     fn simple_invocations_succeed() {
         {
             let args = vec!["elf2tab", "app.elf"];
@@ -230,7 +258,7 @@ mod test {
     }
 
     #[test]
-    // elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=[<filename>]] <elf>...
+    // elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=[<filename>]] <elf[,architecture]>...
     fn simple_invocations_fail() {
         {
             let args = vec!["elf2tab", "app.elf", "--package-name"];
@@ -257,7 +285,7 @@ mod test {
     }
 
     #[test]
-    // elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=[<filename>]] [--minimum-stack-size=<min-stack-size>] <elf>...
+    // elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=[<filename>]] [--minimum-stack-size=<min-stack-size>] <elf[,architecture]>...
     fn advanced_invocations_fail() {
         {
             let args = vec![
@@ -316,7 +344,7 @@ mod test {
 
     #[test]
     // elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=[<filename>]] [--app-heap[=<heap-size>]]
-    //                [--kernel-heap[=<kernel-heap-size>]] [--stack[=<stack-size>]] <elf>..."
+    //                [--kernel-heap[=<kernel-heap-size>]] [--stack[=<stack-size>]] <elf[,architecture]>..."
     fn expert_invocations_succeed() {
         {
             let args = vec![
@@ -374,7 +402,7 @@ mod test {
 
     #[test]
     // elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=[<filename>]] [--app-heap[=<heap-size>]]
-    //                [--kernel-heap[=<kernel-heap-size>]] [--stack[=<stack-size>]] <elf>..."
+    //                [--kernel-heap[=<kernel-heap-size>]] [--stack[=<stack-size>]] <elf[,architecture]>..."
     fn expert_invocations_fail() {
         {
             let args = vec![
@@ -422,7 +450,7 @@ mod test {
 
     #[test]
     // elf2tab [FLAGS] [--write_id=<write_id>] [--read_ids=<read_ids>] [--access_ids=<access_ids>]
-    //                <elf>..."
+    //                <elf[,architecture]>..."
     fn storage_ids() {
         {
             let args = vec![
