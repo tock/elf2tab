@@ -69,7 +69,7 @@ pub struct Opt {
 
     #[structopt(long = "app-version",
                 help = "Set the version number",
-                default_value = "19",
+                default_value = "0x0",
     )]
     pub app_version: u32,
 
