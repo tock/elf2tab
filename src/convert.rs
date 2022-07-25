@@ -620,7 +620,9 @@ pub fn elf_to_tbf(
         };
         output.write_all(sha_credentials.generate().unwrap().get_ref())?;
         footer_space_remaining -= sha256_len;
-        println!("Added SHA256 credential.");
+        if verbose {
+            println!("Added SHA256 credential.");
+        }
     }
 
     if sha512 {
@@ -644,7 +646,9 @@ pub fn elf_to_tbf(
         };
         output.write_all(sha_credentials.generate().unwrap().get_ref())?;
         footer_space_remaining -= sha512_len;
-        println!("Added SHA512 credential.");
+        if verbose {
+            println!("Added SHA512 credential.");
+        }
     }
 
     if rsa4096_private_key.is_some() && rsa4096_public_key.is_none() {
@@ -737,7 +741,9 @@ pub fn elf_to_tbf(
 
         output.write_all(rsa4096_credentials.generate().unwrap().get_ref())?;
         footer_space_remaining -= rsa4096_len;
-        println!("Added PKCS#1v1.5 RSA4096 signature credential.");
+        if verbose {
+            println!("Added PKCS#1v1.5 RSA4096 signature credential.");
+        }
     }
 
     let padding_len = footer_space_remaining;
