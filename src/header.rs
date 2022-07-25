@@ -21,7 +21,7 @@ pub enum TbfHeaderTypes {
 
     Program = 9,
 
-    Credentials = 128
+    Credentials = 128,
 }
 
 #[repr(u32)]
@@ -138,10 +138,10 @@ pub struct TbfFooterCredentials {
 impl TbfFooterCredentials {
     pub fn generate(&self) -> io::Result<io::Cursor<vec::Vec<u8>>> {
         let mut header_buf = io::Cursor::new(Vec::new());
-        header_buf.write_all(unsafe {util::as_byte_slice(&self.base)})?;
-        header_buf.write_all(unsafe {util::as_byte_slice(&self.format)})?;
+        header_buf.write_all(unsafe { util::as_byte_slice(&self.base) })?;
+        header_buf.write_all(unsafe { util::as_byte_slice(&self.format) })?;
         for b in &self.data {
-            header_buf.write_all(unsafe {util::as_byte_slice(b)})?;
+            header_buf.write_all(unsafe { util::as_byte_slice(b) })?;
         }
         Ok(header_buf)
     }
@@ -184,8 +184,11 @@ impl fmt::Display for TbfHeaderProgram {
       minimum_ram_size: {2:>8} {2:>#10X}
      binary_end_offset: {3:>8} {3:>#10X}
            app_version: {4:>8} {4:>#10X}",
-            self.init_fn_offset, self.protected_size, self.minimum_ram_size,
-            self.binary_end_offset, self.app_version
+            self.init_fn_offset,
+            self.protected_size,
+            self.minimum_ram_size,
+            self.binary_end_offset,
+            self.app_version
         )
     }
 }
@@ -293,7 +296,7 @@ impl TbfHeader {
     pub fn new() -> Self {
         Self {
             hdr_base: TbfHeaderBase {
-               version: 2, // Current version is 2.
+                version: 2, // Current version is 2.
                 header_size: 0,
                 total_size: 0,
                 flags: 0,
@@ -338,13 +341,13 @@ impl TbfHeader {
         permissions: Vec<(u32, u32)>,
         storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
         kernel_version: Option<(u16, u16)>,
-        program: bool,
+        include_program_header: bool,
     ) -> usize {
         // Need to calculate lengths ahead of time.
         // Need the base and the program section.
         let mut header_length = mem::size_of::<TbfHeaderBase>();
         header_length += mem::size_of::<TbfHeaderMain>();
-        if program {
+        if include_program_header {
             header_length += mem::size_of::<TbfHeaderProgram>();
         }
 
@@ -533,7 +536,6 @@ impl TbfHeader {
             .len()
     }
 
-
     /// Update the header with the correct protected_size. protected_size should
     /// not include the size of the header itself (as defined in the Main TLV
     /// element type).
@@ -569,7 +571,6 @@ impl TbfHeader {
         if let Some(ref mut program) = self.hdr_program {
             program.minimum_ram_size = minimum_ram_size;
         }
-
     }
 
     /// Update the header with the correct binary end offset. If we did
@@ -579,20 +580,22 @@ impl TbfHeader {
         self.hdr_program = Some(TbfHeaderProgram {
             base: TbfHeaderTlv {
                 tipe: TbfHeaderTypes::Program,
-                length: (mem::size_of::<TbfHeaderProgram>() - mem::size_of::<TbfHeaderTlv>()) as u16
+                length: (mem::size_of::<TbfHeaderProgram>() - mem::size_of::<TbfHeaderTlv>())
+                    as u16,
             },
             init_fn_offset: self.hdr_main.map_or(0, |main| main.init_fn_offset),
             protected_size: self.hdr_main.map_or(0, |main| main.protected_size),
-            minimum_ram_size : self.hdr_main.map_or(0, |main| main.minimum_ram_size),
+            minimum_ram_size: self.hdr_main.map_or(0, |main| main.minimum_ram_size),
             binary_end_offset: binary_end_offset,
-            app_version: 0
+            app_version: 0,
         });
     }
 
     pub fn binary_end_offset(&self) -> u32 {
-        self.hdr_program.map_or(self.hdr_base.total_size, |program| {
-            program.binary_end_offset
-        })
+        self.hdr_program
+            .map_or(self.hdr_base.total_size, |program| {
+                program.binary_end_offset
+            })
     }
 
     pub fn set_app_version(&mut self, version: u32) {
@@ -721,7 +724,7 @@ impl fmt::Display for TbfHeader {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         write!(f, "TBF Header:")?;
         write!(f, "{}", self.hdr_base)?;
-        write!(f, "{:?}", self.hdr_main)?;
+        self.hdr_main.map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         self.hdr_program
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
 

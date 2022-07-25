@@ -64,12 +64,10 @@ pub struct Opt {
     #[structopt(long = "deterministic", help = "Produce a deterministic TAB file")]
     pub deterministic: bool,
 
-    #[structopt(long = "program", help = "Use a program header")]
-    pub program: bool,
-
-    #[structopt(long = "app-version",
-                help = "Set the version number",
-                default_value = "0",
+    #[structopt(
+        long = "app-version",
+        help = "Set the version number",
+        default_value = "0"
     )]
     pub app_version: u32,
 
@@ -101,11 +99,7 @@ pub struct Opt {
     )]
     pub package_name: Option<String>,
 
-    #[structopt(
-        long = "stack",
-        name = "stack-size",
-        help = "in bytes"
-    )]
+    #[structopt(long = "stack", name = "stack-size", help = "in bytes")]
     pub stack_size: Option<u32>,
 
     #[structopt(
@@ -200,14 +194,14 @@ pub struct Opt {
     #[structopt(
         long = "rsa4096-private",
         name = "rsa4096-private-key",
-        help = "Add an 4096-bit RSA signature credential using this private key",
+        help = "Add an 4096-bit RSA signature credential using this private key"
     )]
     pub rsa4096_private_key: Option<PathBuf>,
-    
+
     #[structopt(
         long = "rsa4096-public",
         name = "rsa4096-public-key",
-        help = "Add an 4096-bit RSA signature credential containing this public key",
+        help = "Add an 4096-bit RSA signature credential containing this public key"
     )]
     pub rsa4096_public_key: Option<PathBuf>,
 }

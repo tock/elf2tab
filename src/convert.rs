@@ -1,3 +1,5 @@
+use crate::header;
+use crate::util::{self, align_to, amount_alignment_needed};
 use ring::{rand, signature};
 use rsa_der;
 use sha2::{Digest, Sha256, Sha512};
@@ -6,16 +8,13 @@ use std::io;
 use std::io::Write;
 use std::mem;
 use std::path::{Path, PathBuf};
-use crate::util::{self, align_to, amount_alignment_needed};
-use crate::header;
-
 
 #[derive(Debug)]
 enum RsaError {
-   IO(std::io::Error),
-//   BadPrivateKey,
-//   OOM,
-//   BadSignature,
+    IO(std::io::Error),
+    //   BadPrivateKey,
+    //   OOM,
+    //   BadSignature,
 }
 
 /// Helper function for reading RSA DER key files.
@@ -24,7 +23,8 @@ fn read_rsa_file(path: &std::path::Path) -> Result<Vec<u8>, RsaError> {
 
     let mut file = std::fs::File::open(path).map_err(|e| RsaError::IO(e))?;
     let mut contents: Vec<u8> = Vec::new();
-    file.read_to_end(&mut contents).map_err(|e| RsaError::IO(e))?;
+    file.read_to_end(&mut contents)
+        .map_err(|e| RsaError::IO(e))?;
     Ok(contents)
 }
 
@@ -42,7 +42,7 @@ fn read_rsa_file(path: &std::path::Path) -> Result<Vec<u8>, RsaError> {
 /// - Sections that are writeable flash regions include .wfr in their name.
 pub fn elf_to_tbf(
     input: &elf::File,
-    output: &mut Vec::<u8>,
+    output: &mut Vec<u8>,
     package_name: Option<String>,
     verbose: bool,
     stack_len: Option<u32>,
@@ -53,11 +53,10 @@ pub fn elf_to_tbf(
     storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
     kernel_version: Option<(u16, u16)>,
     trailing_padding: bool,
-    program: bool, // Whether we use a program header, allowing footers
     app_version: u32,
     sha256: bool,
     sha512: bool,
-    rsa4096_private_key:  Option<PathBuf>,
+    rsa4096_private_key: Option<PathBuf>,
     rsa4096_public_key: Option<PathBuf>,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
@@ -273,14 +272,13 @@ pub fn elf_to_tbf(
     // Now we can create the first pass TBF header. This is mostly to get the
     // size of the header since we have to fill in some of the offsets later.
     let mut tbfheader = header::TbfHeader::new();
-    // If we are adding footers, set the binary end offset here because
-    // it will cause a program header to be inserted. This ensures the
-    // length calculations for the binary will be correct.
-    if program {
-        tbfheader.set_binary_end_offset(0);
-        tbfheader.set_app_version(app_version);
-    }
-    
+
+    // Set the binary end offset here because it will cause a program
+    // header to be inserted. This ensures the length calculations for
+    // the binary will be correct.
+    tbfheader.set_binary_end_offset(0);
+    tbfheader.set_app_version(app_version);
+
     let header_length = tbfheader.create(
         minimum_ram_size,
         writeable_flash_regions_count,
@@ -290,7 +288,7 @@ pub fn elf_to_tbf(
         permissions,
         storage_ids,
         kernel_version,
-        program
+        true,
     );
     // If a protected region size was passed, confirm the header will fit.
     // Otherwise, use the header size as the protected region size.
@@ -535,37 +533,31 @@ pub fn elf_to_tbf(
     // Add the relocation data to our total length. Also include the
     // 4 bytes for the relocation data length.
     binary_index += relocation_binary.len() + mem::size_of::<u32>();
-    
-    if program {
-        if verbose {
-            println!("Program header: footers enabled, set the binary end offset to be {}", binary_index);
-        }
-        tbfheader.set_binary_end_offset(binary_index as u32);
-        tbfheader.set_app_version(app_version);
 
-        // Padding footer is required
+    tbfheader.set_binary_end_offset(binary_index as u32);
+    tbfheader.set_app_version(app_version);
+
+    // Padding footer is required
+    binary_index += mem::size_of::<header::TbfHeaderTlv>();
+    binary_index += mem::size_of::<header::TbfFooterCredentialsType>();
+
+    // Process optional footers
+    if sha256 {
         binary_index += mem::size_of::<header::TbfHeaderTlv>();
         binary_index += mem::size_of::<header::TbfFooterCredentialsType>();
+        binary_index += 32; // SHA256 is 32 bytes long
+    }
 
-        // Process optional footers
-        if sha256 {
-            binary_index += mem::size_of::<header::TbfHeaderTlv>();
-            binary_index += mem::size_of::<header::TbfFooterCredentialsType>();
-            binary_index += 32; // SHA256 is 32 bytes long
-        }
+    if sha512 {
+        binary_index += mem::size_of::<header::TbfHeaderTlv>();
+        binary_index += mem::size_of::<header::TbfFooterCredentialsType>();
+        binary_index += 64; // SHA512 is 64 bytes long
+    }
 
-        if sha512 {
-            binary_index += mem::size_of::<header::TbfHeaderTlv>();
-            binary_index += mem::size_of::<header::TbfFooterCredentialsType>();
-            binary_index += 64; // SHA512 is 64 bytes long
-        }
-
-        if rsa4096_private_key.is_some() {
-            binary_index += mem::size_of::<header::TbfHeaderTlv>();
-            binary_index += mem::size_of::<header::TbfFooterCredentialsType>();
-            binary_index += 1024;
-        }
-        
+    if rsa4096_private_key.is_some() {
+        binary_index += mem::size_of::<header::TbfHeaderTlv>();
+        binary_index += mem::size_of::<header::TbfFooterCredentialsType>();
+        binary_index += 1024;
     }
 
     let post_content_pad = if trailing_padding {
@@ -601,143 +593,155 @@ pub fn elf_to_tbf(
     let rel_data_len: [u8; 4] = (relocation_binary.len() as u32).to_le_bytes();
     output.write_all(&rel_data_len)?;
     output.write_all(relocation_binary.as_ref())?;
-    
+
     // That is everything that we are going to include in the app binary
-    // that is covered by integrity.
+    // that is covered by integrity. Now add footers.
 
-    if program {
-        println!("Running elf2tab in program header mode.");
-        let footers_len = total_size - tbfheader.binary_end_offset() as usize;
-        let mut footer_space_remaining = footers_len;
-        if sha256 {
-            // Total length
-            let sha256_len = mem::size_of::<header::TbfHeaderTlv>() +
-                             mem::size_of::<header::TbfFooterCredentialsType>() +
-                             32; // SHA256 is 32 bytes long
-            // Length in the TLV field
-            let sha256_tlv_len = sha256_len - mem::size_of::<header::TbfHeaderTlv>();
+    let footers_len = total_size - tbfheader.binary_end_offset() as usize;
+    let mut footer_space_remaining = footers_len;
+    if sha256 {
+        // Total length
+        let sha256_len = mem::size_of::<header::TbfHeaderTlv>()
+            + mem::size_of::<header::TbfFooterCredentialsType>()
+            + 32; // SHA256 is 32 bytes long
+                  // Length in the TLV field
+        let sha256_tlv_len = sha256_len - mem::size_of::<header::TbfHeaderTlv>();
 
-            let mut hasher = Sha256::new();
-            hasher.update(&output[0..tbfheader.binary_end_offset() as usize]);
-            let result = hasher.finalize();
-            let sha_credentials = header::TbfFooterCredentials {
-                base: header::TbfHeaderTlv {
-                    tipe: header::TbfHeaderTypes::Credentials,
-                    length: sha256_tlv_len as u16,
-                },
-                format: header::TbfFooterCredentialsType::SHA256,
-                data: result.to_vec(),
-            };
-            output.write_all(sha_credentials.generate().unwrap().get_ref())?;
-            footer_space_remaining -= sha256_len;
-            println!("Added SHA256 credential.");
-        }
-        
-        if sha512 {
-            // Total length
-            let sha512_len = mem::size_of::<header::TbfHeaderTlv>() +
-                             mem::size_of::<header::TbfFooterCredentialsType>() +
-                             64; // SHA256 is 32 bytes long
-            // Length in the TLV field
-            let sha512_tlv_len = sha512_len - mem::size_of::<header::TbfHeaderTlv>();
+        let mut hasher = Sha256::new();
+        hasher.update(&output[0..tbfheader.binary_end_offset() as usize]);
+        let result = hasher.finalize();
+        let sha_credentials = header::TbfFooterCredentials {
+            base: header::TbfHeaderTlv {
+                tipe: header::TbfHeaderTypes::Credentials,
+                length: sha256_tlv_len as u16,
+            },
+            format: header::TbfFooterCredentialsType::SHA256,
+            data: result.to_vec(),
+        };
+        output.write_all(sha_credentials.generate().unwrap().get_ref())?;
+        footer_space_remaining -= sha256_len;
+        println!("Added SHA256 credential.");
+    }
 
-            let mut hasher = Sha512::new();
-            hasher.update(&output[0..tbfheader.binary_end_offset() as usize]);
-            let result = hasher.finalize();
-            let sha_credentials = header::TbfFooterCredentials {
-                base: header::TbfHeaderTlv {
-                    tipe: header::TbfHeaderTypes::Credentials,
-                    length: sha512_tlv_len as u16,
-                },
-                format: header::TbfFooterCredentialsType::SHA512,
-                data: result.to_vec(),
-            };
-            output.write_all(sha_credentials.generate().unwrap().get_ref())?;
-            footer_space_remaining -= sha512_len;
-            println!("Added SHA512 credential.");
-        }
-        
-        if rsa4096_private_key.is_some() && rsa4096_public_key.is_none() {
-            panic!("RSA4096 private key provided but no corresponding public key provided.");
-        }
-        if rsa4096_private_key.is_none() && rsa4096_public_key.is_some() {
-            panic!("RSA4096 public key provided but no corresponding private key provided.");       
-        }
-        else if rsa4096_private_key.is_some() && rsa4096_private_key.is_some() {
-             let rsa4096_len = mem::size_of::<header::TbfHeaderTlv>() +
-                               mem::size_of::<header::TbfFooterCredentialsType>() +
-                             1024; // Signature + key is 1024 bytes long
-            // Length in the TLV field
-            let rsa4096_tlv_len = rsa4096_len - mem::size_of::<header::TbfHeaderTlv>();
+    if sha512 {
+        // Total length
+        let sha512_len = mem::size_of::<header::TbfHeaderTlv>()
+            + mem::size_of::<header::TbfFooterCredentialsType>()
+            + 64; // SHA256 is 32 bytes long
+                  // Length in the TLV field
+        let sha512_tlv_len = sha512_len - mem::size_of::<header::TbfHeaderTlv>();
 
-            let private_buf = rsa4096_private_key.unwrap();
-            let private_key_path = Path::new(&private_buf);
-            let public_buf = rsa4096_public_key.unwrap();
-            let public_key_path = Path::new(&public_buf);
-            
-            let private_key_der =
-                read_rsa_file(private_key_path)
-                .map_err(|e| {
-                    panic!("Failed to read private key from {:?}: {:?}", private_key_path, e);}).unwrap();
+        let mut hasher = Sha512::new();
+        hasher.update(&output[0..tbfheader.binary_end_offset() as usize]);
+        let result = hasher.finalize();
+        let sha_credentials = header::TbfFooterCredentials {
+            base: header::TbfHeaderTlv {
+                tipe: header::TbfHeaderTypes::Credentials,
+                length: sha512_tlv_len as u16,
+            },
+            format: header::TbfFooterCredentialsType::SHA512,
+            data: result.to_vec(),
+        };
+        output.write_all(sha_credentials.generate().unwrap().get_ref())?;
+        footer_space_remaining -= sha512_len;
+        println!("Added SHA512 credential.");
+    }
 
+    if rsa4096_private_key.is_some() && rsa4096_public_key.is_none() {
+        panic!("RSA4096 private key provided but no corresponding public key provided.");
+    }
+    if rsa4096_private_key.is_none() && rsa4096_public_key.is_some() {
+        panic!("RSA4096 public key provided but no corresponding private key provided.");
+    } else if rsa4096_private_key.is_some() && rsa4096_private_key.is_some() {
+        let rsa4096_len = mem::size_of::<header::TbfHeaderTlv>()
+            + mem::size_of::<header::TbfFooterCredentialsType>()
+            + 1024; // Signature + key is 1024 bytes long
+                    // Length in the TLV field
+        let rsa4096_tlv_len = rsa4096_len - mem::size_of::<header::TbfHeaderTlv>();
 
-            let public_key_der =
-                read_rsa_file(public_key_path)
-                .map_err(|e| {
-                    panic!("Failed to read public key from {:?}: {:?}", public_key_path, e);}).unwrap();
+        let private_buf = rsa4096_private_key.unwrap();
+        let private_key_path = Path::new(&private_buf);
+        let public_buf = rsa4096_public_key.unwrap();
+        let public_key_path = Path::new(&public_buf);
 
-            let key_pair = signature::RsaKeyPair::from_der(&private_key_der)
-                .map_err(|e| {
-                    panic!("RSA4096 could not be parsed: {:?}", e);
-                }).unwrap();
-            
-            let public_key = rsa_der::public_key_from_der(&public_key_der);
+        let private_key_der = read_rsa_file(private_key_path)
+            .map_err(|e| {
+                panic!(
+                    "Failed to read private key from {:?}: {:?}",
+                    private_key_path, e
+                );
+            })
+            .unwrap();
 
-            let public_modulus = match public_key {
-                Ok((n, _)) => {
-                    n
-                },
-                Err(_) => {
-                    panic!("RSA4096 signature requested but provided public key could not be parsed.");
-                }
-            };
-            
-            
-            if key_pair.public_modulus_len() != 512 {
-                // A 4096-bit key should have a 512-byte modulus
-                panic!("RSA4096 signature requested but key {:?} is not 4096 bits, it is {} bits", private_key_path, private_key_der.len() * 8 );
+        let public_key_der = read_rsa_file(public_key_path)
+            .map_err(|e| {
+                panic!(
+                    "Failed to read public key from {:?}: {:?}",
+                    public_key_path, e
+                );
+            })
+            .unwrap();
+
+        let key_pair = signature::RsaKeyPair::from_der(&private_key_der)
+            .map_err(|e| {
+                panic!("RSA4096 could not be parsed: {:?}", e);
+            })
+            .unwrap();
+
+        let public_key = rsa_der::public_key_from_der(&public_key_der);
+
+        let public_modulus = match public_key {
+            Ok((n, _)) => n,
+            Err(_) => {
+                panic!("RSA4096 signature requested but provided public key could not be parsed.");
             }
-            let rng = rand::SystemRandom::new();
-            let mut signature = vec![0; key_pair.public_modulus_len()];
-            let _res = key_pair.sign(&signature::RSA_PKCS1_SHA512, &rng,
-                                    &output[0..tbfheader.binary_end_offset() as usize],
-                                    &mut signature).map_err(|e| {
-                                        panic!("Could not generate RSA4096 signature: {:?}", e);
-                                    });
-            let mut credentials = vec![0; 1024];
-            for i in 0..key_pair.public_modulus_len() {
-                credentials[i] = public_modulus[i];
-            }
-            for i in 0..signature.len() {
-                let index = i + key_pair.public_modulus_len();
-                credentials[index] = signature[i];
-            }
+        };
 
-            let rsa4096_credentials = header::TbfFooterCredentials {
-                base: header::TbfHeaderTlv {
-                    tipe: header::TbfHeaderTypes::Credentials,
-                    length: rsa4096_tlv_len as u16,
-                },
-                format: header::TbfFooterCredentialsType::Rsa4096Key,
-                data: credentials
-            };
-
-            output.write_all(rsa4096_credentials.generate().unwrap().get_ref())?;
-            footer_space_remaining -= rsa4096_len;
-            println!("Added PKCS#1v1.5 RSA4096 signature credential.");
+        if key_pair.public_modulus_len() != 512 {
+            // A 4096-bit key should have a 512-byte modulus
+            panic!(
+                "RSA4096 signature requested but key {:?} is not 4096 bits, it is {} bits",
+                private_key_path,
+                private_key_der.len() * 8
+            );
+        }
+        let rng = rand::SystemRandom::new();
+        let mut signature = vec![0; key_pair.public_modulus_len()];
+        let _res = key_pair
+            .sign(
+                &signature::RSA_PKCS1_SHA512,
+                &rng,
+                &output[0..tbfheader.binary_end_offset() as usize],
+                &mut signature,
+            )
+            .map_err(|e| {
+                panic!("Could not generate RSA4096 signature: {:?}", e);
+            });
+        let mut credentials = vec![0; 1024];
+        for i in 0..key_pair.public_modulus_len() {
+            credentials[i] = public_modulus[i];
+        }
+        for i in 0..signature.len() {
+            let index = i + key_pair.public_modulus_len();
+            credentials[index] = signature[i];
         }
 
-        let padding_len = footer_space_remaining;
+        let rsa4096_credentials = header::TbfFooterCredentials {
+            base: header::TbfHeaderTlv {
+                tipe: header::TbfHeaderTypes::Credentials,
+                length: rsa4096_tlv_len as u16,
+            },
+            format: header::TbfFooterCredentialsType::Rsa4096Key,
+            data: credentials,
+        };
+
+        output.write_all(rsa4096_credentials.generate().unwrap().get_ref())?;
+        footer_space_remaining -= rsa4096_len;
+        println!("Added PKCS#1v1.5 RSA4096 signature credential.");
+    }
+
+    let padding_len = footer_space_remaining;
+    if padding_len >= mem::size_of::<header::TbfHeaderTlv>() {
         let padding_tlv_len = padding_len - mem::size_of::<header::TbfHeaderTlv>();
         let padding_credentials = header::TbfFooterCredentials {
             base: header::TbfHeaderTlv {
@@ -749,8 +753,8 @@ pub fn elf_to_tbf(
         };
         let creds = padding_credentials.generate().unwrap();
         output.write_all(creds.get_ref())?;
-        //footer_space_remaining -= padding_len;
     }
+
     // Pad to get a power of 2 sized flash app, if requested.
     util::do_pad(output, post_content_pad as usize)?;
 
