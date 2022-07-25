@@ -1,9 +1,9 @@
+use crate::header;
+use crate::util::{self, align_to, amount_alignment_needed};
 use std::cmp;
 use std::io;
 use std::io::Write;
 use std::mem;
-use crate::util::{self, align_to, amount_alignment_needed};
-use crate::header;
 
 /// Convert an ELF file to a TBF (Tock Binary Format) binary file.
 ///

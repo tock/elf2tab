@@ -4,8 +4,8 @@ use std::io;
 use std::io::Seek;
 use structopt::StructOpt;
 
-use elf2tab::convert;
 use elf2tab::cmdline;
+use elf2tab::convert;
 
 fn main() {
     let opt = cmdline::Opt::from_args();

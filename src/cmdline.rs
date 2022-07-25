@@ -92,11 +92,7 @@ pub struct Opt {
     )]
     pub package_name: Option<String>,
 
-    #[structopt(
-        long = "stack",
-        name = "stack-size",
-        help = "in bytes"
-    )]
+    #[structopt(long = "stack", name = "stack-size", help = "in bytes")]
     pub stack_size: Option<u32>,
 
     #[structopt(
