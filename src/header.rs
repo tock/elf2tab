@@ -427,13 +427,13 @@ impl TbfHeader {
             }
 
             if let Some(read_ids) = storage_ids.1 {
-                hdr_persistent.base.length += read_ids.len() as u16;
+                hdr_persistent.base.length += (read_ids.len() as u16) * 4;
                 hdr_persistent.read_length = read_ids.len() as u16;
                 hdr_persistent.read_ids = read_ids;
             }
 
             if let Some(access_ids) = storage_ids.2 {
-                hdr_persistent.base.length += access_ids.len() as u16;
+                hdr_persistent.base.length += (access_ids.len() as u16) * 4;
                 hdr_persistent.access_length = access_ids.len() as u16;
                 hdr_persistent.access_ids = access_ids;
             }
