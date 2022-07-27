@@ -2,7 +2,7 @@ use crate::header;
 use crate::util::{self, align_to, amount_alignment_needed};
 use ring::{rand, signature};
 use rsa_der;
-use sha2::{Digest, Sha256, Sha512};
+use sha2::{Digest, Sha256, Sha384, Sha512};
 use std::cmp;
 use std::io;
 use std::io::Write;
@@ -55,6 +55,7 @@ pub fn elf_to_tbf(
     trailing_padding: bool,
     app_version: u32,
     sha256: bool,
+    sha384: bool,
     sha512: bool,
     rsa4096_private_key: Option<PathBuf>,
     rsa4096_public_key: Option<PathBuf>,
@@ -548,6 +549,12 @@ pub fn elf_to_tbf(
         binary_index += 32; // SHA256 is 32 bytes long
     }
 
+    if sha384 {
+        binary_index += mem::size_of::<header::TbfHeaderTlv>();
+        binary_index += mem::size_of::<header::TbfFooterCredentialsType>();
+        binary_index += 48; // SHA384 is 48 bytes long
+    }
+
     if sha512 {
         binary_index += mem::size_of::<header::TbfHeaderTlv>();
         binary_index += mem::size_of::<header::TbfFooterCredentialsType>();
@@ -625,11 +632,37 @@ pub fn elf_to_tbf(
         }
     }
 
+    if sha384 {
+        // Total length
+        let sha384_len = mem::size_of::<header::TbfHeaderTlv>()
+            + mem::size_of::<header::TbfFooterCredentialsType>()
+            + 48; // SHA384 is 48 bytes long
+                  // Length in the TLV field
+        let sha384_tlv_len = sha384_len - mem::size_of::<header::TbfHeaderTlv>();
+
+        let mut hasher = Sha384::new();
+        hasher.update(&output[0..tbfheader.binary_end_offset() as usize]);
+        let result = hasher.finalize();
+        let sha_credentials = header::TbfFooterCredentials {
+            base: header::TbfHeaderTlv {
+                tipe: header::TbfHeaderTypes::Credentials,
+                length: sha384_tlv_len as u16,
+            },
+            format: header::TbfFooterCredentialsType::SHA384,
+            data: result.to_vec(),
+        };
+        output.write_all(sha_credentials.generate().unwrap().get_ref())?;
+        footer_space_remaining -= sha384_len;
+        if verbose {
+            println!("Added SHA384 credential.");
+        }
+    }
+
     if sha512 {
         // Total length
         let sha512_len = mem::size_of::<header::TbfHeaderTlv>()
             + mem::size_of::<header::TbfFooterCredentialsType>()
-            + 64; // SHA256 is 32 bytes long
+            + 64; // SHA512 is 64 bytes long
                   // Length in the TLV field
         let sha512_tlv_len = sha512_len - mem::size_of::<header::TbfHeaderTlv>();
 

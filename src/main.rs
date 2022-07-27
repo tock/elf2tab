@@ -141,6 +141,7 @@ fn main() {
             add_trailing_padding,
             opt.app_version,
             opt.sha256_enable,
+            opt.sha384_enable,
             opt.sha512_enable,
             opt.rsa4096_private_key.clone(),
             opt.rsa4096_public_key.clone(),

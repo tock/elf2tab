@@ -185,6 +185,13 @@ pub struct Opt {
     pub sha256_enable: bool,
 
     #[structopt(
+        long = "sha384",
+        name = "sha384-add",
+        help = "Add a SHA384 hash credential to each TAB"
+    )]
+    pub sha384_enable: bool,
+
+    #[structopt(
         long = "sha512",
         name = "sha512-add",
         help = "Add a SHA512 hash credential to each TAB"
