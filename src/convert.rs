@@ -747,7 +747,7 @@ pub fn elf_to_tbf(
     }
 
     let padding_len = footer_space_remaining;
-    if padding_len >= mem::size_of::<header::TbfHeaderTlv>() {
+    if padding_len >= mem::size_of::<header::TbfFooterCredentials>() {
         let padding_tlv_len = padding_len - mem::size_of::<header::TbfHeaderTlv>();
         let padding_credentials = header::TbfFooterCredentials {
             base: header::TbfHeaderTlv {
