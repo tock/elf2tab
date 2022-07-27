@@ -17,11 +17,15 @@ Converts Tock userspace programs from .elf files to Tock Application Bundles.
 FLAGS:
         --deterministic    Produce a deterministic TAB file
     -h, --help             Prints help information
+        --sha256           Add a SHA256 hash credential to each TAB
+        --sha384           Add a SHA384 hash credential to each TAB
+        --sha512           Add a SHA512 hash credential to each TAB
     -V, --version          Prints version information
     -v, --verbose          Be verbose
 
 OPTIONS:
         --access_ids <access_ids>...                       Storage IDs that this app is allowed to write
+        --app-version <app-version>                        Set the version number [default: 0]
     -o, --output-file <filename>                           output file name [default: TockApp.tab]
         --app-heap <heap-size>                             in bytes [default: 1024]
         --kernel-heap <kernel-heap-size>                   in bytes [default: 1024]
@@ -32,7 +36,9 @@ OPTIONS:
     -n, --package-name <pkg-name>                          package name
         --protected-region-size <protected-region-size>    Size of the protected region (including headers)
         --read_ids <read_ids>...                           Storage IDs that this app is allowed to read
-        --stack <stack-size>                               in bytes [default: 2048]
+        --rsa4096-private <rsa4096-private-key>            Add an 4096-bit RSA signature credential using this private key
+        --rsa4096-public <rsa4096-public-key>              Add an 4096-bit RSA signature credential containing this public key
+        --stack <stack-size>                               in bytes
         --write_id <write_id>                              A storage ID used for writing data
 
 ARGS:
