@@ -139,6 +139,7 @@ fn main() {
             (opt.write_id, opt.read_ids.clone(), opt.access_ids.clone()),
             minimum_tock_kernel_version,
             add_trailing_padding,
+            opt.minimum_footer_size,
             opt.app_version,
             opt.sha256_enable,
             opt.sha384_enable,

@@ -32,6 +32,7 @@ OPTIONS:
         --kernel-major <kernel-major-version>              The kernel version that the app requires
         --kernel-minor <kernel-minor-version>              The minimum kernel minor version that the app requires
         --minimum-ram-size <min-ram-size>                  in bytes
+        --minimum-footer-size <min-footer-size>            Minimum number of bytes to reserve space for in the footer [default: 0]
         --permissions <permissions>...                     A list of driver numbers and allowed commands
     -n, --package-name <pkg-name>                          package name
         --protected-region-size <protected-region-size>    Size of the protected region (including headers)

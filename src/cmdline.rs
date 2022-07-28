@@ -178,6 +178,14 @@ pub struct Opt {
     pub kernel_minor: Option<u16>,
 
     #[structopt(
+        long = "minimum-footer-size",
+        name = "min-footer-size",
+        help = "Minimum number of bytes to reserve space for in the footer",
+        default_value = "0"
+    )]
+    pub minimum_footer_size: u32,
+
+    #[structopt(
         long = "sha256",
         name = "sha256-add",
         help = "Add a SHA256 hash credential to each TAB"

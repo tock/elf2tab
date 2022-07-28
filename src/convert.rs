@@ -53,6 +53,7 @@ pub fn elf_to_tbf(
     storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
     kernel_version: Option<(u16, u16)>,
     trailing_padding: bool,
+    minimum_footer_size: u32,
     app_version: u32,
     sha256: bool,
     sha384: bool,
@@ -535,6 +536,8 @@ pub fn elf_to_tbf(
     // 4 bytes for the relocation data length.
     binary_index += relocation_binary.len() + mem::size_of::<u32>();
 
+    // Next up is the footer. Since we know where the footer starts, we can
+    // record that now. Also insert app version number.
     tbfheader.set_binary_end_offset(binary_index as u32);
     tbfheader.set_app_version(app_version);
 
@@ -563,6 +566,25 @@ pub fn elf_to_tbf(
         binary_index += 1024;
     }
 
+    let footers_initial_len = binary_index - tbfheader.binary_end_offset() as usize;
+
+    // Make sure the footer is at least the minimum requested size.
+    if (minimum_footer_size as usize) > footers_initial_len {
+        // We can only add reserved space to the footer with a minimum of 8
+        // bytes.
+        if (minimum_footer_size as usize) - footers_initial_len
+            >= (mem::size_of::<header::TbfHeaderTlv>()
+                + mem::size_of::<header::TbfFooterCredentialsType>())
+        {
+            // Add reserved space to the footer.
+            binary_index += minimum_footer_size as usize - footers_initial_len;
+        }
+    }
+
+    // Optionally calculate the additional padding needed to ensure the app size
+    // is a power of two. This will be largely covered with a footer
+    // reservation. The `post_content_pad` is any additional space that cannot
+    // be handled by reserved space in the footer.
     let post_content_pad = if trailing_padding {
         // If trailing padding is requested, we need to pad the binary to a
         // power of 2 in size, and make sure it is at least 512 bytes in size.
@@ -574,7 +596,17 @@ pub fn elf_to_tbf(
         };
         // Increment to include the padding.
         binary_index += pad;
-        pad
+
+        // If there is room for a TbfFooterCredentials we will use that
+        if pad
+            >= (mem::size_of::<header::TbfHeaderTlv>()
+                + mem::size_of::<header::TbfFooterCredentialsType>())
+        {
+            0
+        } else {
+            // Otherwise need to include the padding.
+            pad
+        }
     } else {
         // No padding.
         0
@@ -776,19 +808,23 @@ pub fn elf_to_tbf(
     }
 
     let padding_len = footer_space_remaining;
+
     // Need at least space for the base Credentials TLV.
     if padding_len
         >= (mem::size_of::<header::TbfHeaderTlv>()
             + mem::size_of::<header::TbfFooterCredentialsType>())
     {
         let padding_tlv_len = padding_len - mem::size_of::<header::TbfHeaderTlv>();
+        let reserved_len = padding_tlv_len - mem::size_of::<header::TbfFooterCredentialsType>();
+        let mut reserved_vec = Vec::<u8>::with_capacity(reserved_len);
+        reserved_vec.resize(reserved_len, 0);
         let padding_credentials = header::TbfFooterCredentials {
             base: header::TbfHeaderTlv {
                 tipe: header::TbfHeaderTypes::Credentials,
                 length: padding_tlv_len as u16,
             },
             format: header::TbfFooterCredentialsType::Padding,
-            data: Vec::<u8>::new(),
+            data: reserved_vec,
         };
         let creds = padding_credentials.generate().unwrap();
         output.write_all(creds.get_ref())?;
