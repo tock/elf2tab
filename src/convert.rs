@@ -570,15 +570,21 @@ pub fn elf_to_tbf(
 
     // Make sure the footer is at least the minimum requested size.
     if (minimum_footer_size as usize) > footers_initial_len {
+        let mut needed_footer_reserved_space = (minimum_footer_size as usize) - footers_initial_len;
+
         // We can only add reserved space to the footer with a minimum of 8
         // bytes.
-        if (minimum_footer_size as usize) - footers_initial_len
-            >= (mem::size_of::<header::TbfHeaderTlv>()
-                + mem::size_of::<header::TbfFooterCredentialsType>())
-        {
-            // Add reserved space to the footer.
-            binary_index += minimum_footer_size as usize - footers_initial_len;
-        }
+        needed_footer_reserved_space = cmp::max(
+            needed_footer_reserved_space,
+            mem::size_of::<header::TbfHeaderTlv>()
+                + mem::size_of::<header::TbfFooterCredentialsType>(),
+        );
+        // We also must ensure that if there were to be a TLV after the
+        // reserved TLV that it would start at a 4 byte alignment.
+        needed_footer_reserved_space = align_to(needed_footer_reserved_space as u32, 4) as usize;
+
+        // Add reserved space to the footer.
+        binary_index += needed_footer_reserved_space;
     }
 
     // Optionally calculate the additional padding needed to ensure the app size
