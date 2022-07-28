@@ -538,10 +538,6 @@ pub fn elf_to_tbf(
     tbfheader.set_binary_end_offset(binary_index as u32);
     tbfheader.set_app_version(app_version);
 
-    // Padding footer is required
-    binary_index += mem::size_of::<header::TbfHeaderTlv>();
-    binary_index += mem::size_of::<header::TbfFooterCredentialsType>();
-
     // Process optional footers
     if sha256 {
         binary_index += mem::size_of::<header::TbfHeaderTlv>();
