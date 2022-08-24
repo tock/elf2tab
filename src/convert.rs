@@ -362,27 +362,6 @@ pub fn elf_to_tbf<W: Write>(
     for s in &sections_sort {
         let section = &input.sections[s.0];
 
-        // Determine if this is the section where the entry point is in. If it
-        // is, then we need to calculate the correct init_fn_offset.
-        if input.ehdr.entry >= section.shdr.addr
-            && input.ehdr.entry < (section.shdr.addr + section.shdr.size)
-            && (section.shdr.name.find("debug")).is_none()
-        {
-            // panic in case we detect entry point in multiple sections.
-            if entry_point_found {
-                panic!("Duplicate entry point in {} section", section.shdr.name);
-            }
-            entry_point_found = true;
-
-            if verbose {
-                println!("Entry point is in {} section", section.shdr.name);
-            }
-            // init_fn_offset is specified relative to the end of the TBF
-            // header.
-            init_fn_offset = (input.ehdr.entry - section.shdr.addr) as u32
-                + (binary_index - header_length) as u32
-        }
-
         // If this is writeable, executable, or allocated, is nonzero length,
         // and is type `PROGBITS` we want to add it to the binary.
         if (section.shdr.flags.0
@@ -419,6 +398,27 @@ pub fn elf_to_tbf<W: Write>(
                         binary.extend(&zero_buf[..padding]);
                     }
                 }
+            }
+
+            // Determine if this is the section where the entry point is in. If it
+            // is, then we need to calculate the correct init_fn_offset.
+            if input.ehdr.entry >= section.shdr.addr
+                && input.ehdr.entry < (section.shdr.addr + section.shdr.size)
+                && (section.shdr.name.find("debug")).is_none()
+            {
+                // panic in case we detect entry point in multiple sections.
+                if entry_point_found {
+                    panic!("Duplicate entry point in {} section", section.shdr.name);
+                }
+                entry_point_found = true;
+
+                if verbose {
+                    println!("Entry point is in {} section", section.shdr.name);
+                }
+                // init_fn_offset is specified relative to the end of the TBF
+                // header.
+                init_fn_offset = (input.ehdr.entry - section.shdr.addr) as u32
+                    + (binary_index - header_length) as u32
             }
 
             if verbose {
