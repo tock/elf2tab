@@ -4,8 +4,8 @@ use std::io;
 use std::io::Seek;
 use structopt::StructOpt;
 
-use elf2tab::convert;
 use elf2tab::cmdline;
+use elf2tab::convert;
 
 fn main() {
     let opt = cmdline::Opt::from_args();
@@ -135,6 +135,7 @@ fn main() {
             (opt.write_id, opt.read_ids.clone(), opt.access_ids.clone()),
             minimum_tock_kernel_version,
             add_trailing_padding,
+            opt.disabled,
         )
         .unwrap();
         if opt.verbose {

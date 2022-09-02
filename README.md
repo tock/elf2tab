@@ -16,6 +16,7 @@ Converts Tock userspace programs from .elf files to Tock Application Bundles.
 
 FLAGS:
         --deterministic    Produce a deterministic TAB file
+        --disable          Mark the app as disabled in the TBF flags
     -h, --help             Prints help information
     -V, --version          Prints version information
     -v, --verbose          Be verbose

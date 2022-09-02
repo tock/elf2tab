@@ -1,9 +1,9 @@
+use crate::header;
+use crate::util::{self, align_to, amount_alignment_needed};
 use std::cmp;
 use std::io;
 use std::io::Write;
 use std::mem;
-use crate::util::{self, align_to, amount_alignment_needed};
-use crate::header;
 
 /// Convert an ELF file to a TBF (Tock Binary Format) binary file.
 ///
@@ -30,6 +30,7 @@ pub fn elf_to_tbf<W: Write>(
     storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
     kernel_version: Option<(u16, u16)>,
     trailing_padding: bool,
+    disabled: bool,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -253,6 +254,7 @@ pub fn elf_to_tbf<W: Write>(
         permissions,
         storage_ids,
         kernel_version,
+        disabled,
     );
     // If a protected region size was passed, confirm the header will fit.
     // Otherwise, use the header size as the protected region size.
@@ -406,9 +408,19 @@ pub fn elf_to_tbf<W: Write>(
                 && input.ehdr.entry < (section.shdr.addr + section.shdr.size)
                 && (section.shdr.name.find("debug")).is_none()
             {
-                // panic in case we detect entry point in multiple sections.
+                // In the normal case, panic in case we detect entry point in
+                // multiple sections.
                 if entry_point_found {
-                    panic!("Duplicate entry point in {} section", section.shdr.name);
+                    // If the app is disabled just report a warning if we find
+                    // two entry points. OTBN apps will contain two entry
+                    // points, so this allows us to load them.
+                    if disabled {
+                        if verbose {
+                            println!("Duplicate entry point in {} section", section.shdr.name);
+                        }
+                    } else {
+                        panic!("Duplicate entry point in {} section", section.shdr.name);
+                    }
                 }
                 entry_point_found = true;
 
