@@ -35,6 +35,7 @@ OPTIONS:
         --read_ids <read_ids>...                           Storage IDs that this app is allowed to read
         --stack <stack-size>                               in bytes [default: 2048]
         --write_id <write_id>                              A storage ID used for writing data
+        --supported-boards <supported-boards>              Comma separated list of boards this app is compatible with
 
 ARGS:
     <elf[,architecture]>...    application file(s) to package
