@@ -146,6 +146,32 @@ pub fn elf_to_tbf<W: Write>(
         false
     }
 
+    /// Helper function to find the start section is inside a
+    /// given segment.
+    ///
+    /// This is necessary because the flash segment is not guaranteed 
+    /// to start at the same address as the start section.
+    fn find_start_in_segment<'a>(input: &'a elf::File, segment: &elf::types::ProgramHeader) -> Option<&'a elf::Section> {
+        let segment_start = segment.offset as u32;
+        let segment_size = segment.filesz as u32;
+        let segment_end = segment_start + segment_size;
+
+        for section in input.sections.iter() {
+            let section_start = section.shdr.offset as u32;
+            let section_size = section.shdr.size as u32;
+            let section_end = section_start + section_size;
+
+            if section_start >= segment_start
+                && section_end <= segment_end
+                && section_size > 0
+                && section.shdr.name == ".start"
+            {
+                return Some(section);
+            }
+        }
+        None
+    }
+
     // Do flash address.
     for segment in &input.phdrs {
         match segment.progtype {
@@ -165,11 +191,13 @@ pub fn elf_to_tbf<W: Write>(
                     if segment.vaddr == 0x80000000 {
                         fixed_address_flash_pic = true;
                     } else {
-                        fixed_address_flash = if let Some(prev_addr) = fixed_address_flash {
-                            Some(cmp::min(prev_addr, segment.vaddr as u32))
-                        } else {
-                            Some(segment.vaddr as u32)
-                        }
+                        let start = find_start_in_segment(input, segment)
+                            .map(|section| section.shdr.addr as u32);
+                        fixed_address_flash = match (fixed_address_flash, start) {
+                            (Some(prev_addr), Some(start)) =>
+                                Some(cmp::min(prev_addr, start as u32)),
+                            (prev, start) => prev.or(start),
+                        };
                     }
                 }
             }
