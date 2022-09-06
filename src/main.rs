@@ -171,7 +171,6 @@ fn main() {
 
         // Add the file to the TAB tar file.
         outfile.seek(io::SeekFrom::Start(0)).unwrap();
-
         tab.append_file(tab_tbf_name, &mut outfile).unwrap();
     }
 }

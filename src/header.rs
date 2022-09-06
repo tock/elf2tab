@@ -737,7 +737,6 @@ impl fmt::Display for TbfHeader {
         for wfr in &self.hdr_wfr {
             write!(f, "{}", wfr)?;
         }
-
         self.hdr_fixed_addresses
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         self.hdr_permissions
