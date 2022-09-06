@@ -324,7 +324,6 @@ pub fn elf_to_tbf(
         storage_ids,
         kernel_version,
         disabled,
-        true,
     );
     // If a protected region size was passed, confirm the header will fit.
     // Otherwise, use the header size as the protected region size.

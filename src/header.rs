@@ -344,15 +344,17 @@ impl TbfHeader {
         storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
         kernel_version: Option<(u16, u16)>,
         disabled: bool,
-        include_program_header: bool,
     ) -> usize {
-        // Need to calculate lengths ahead of time.
-        // Need the base and the program section.
+        // Need to calculate lengths ahead of time. Need the base and the
+        // program section. For backwards compatibility we include both the main
+        // and program header. The program header is preferred, and the
+        // intention is for it to replace the main header. However, older Tock
+        // kernels we support only recognize the main header, so we include it
+        // as well. Newer kernels and other tools should use the program header
+        // and ignore the main header.
         let mut header_length = mem::size_of::<TbfHeaderBase>();
         header_length += mem::size_of::<TbfHeaderMain>();
-        if include_program_header {
-            header_length += mem::size_of::<TbfHeaderProgram>();
-        }
+        header_length += mem::size_of::<TbfHeaderProgram>();
 
         // If we have a package name, add that section.
         self.package_name_pad = if !package_name.is_empty() {
