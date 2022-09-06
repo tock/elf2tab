@@ -873,7 +873,7 @@ pub fn elf_to_tbf(
                 tipe: header::TbfHeaderTypes::Credentials,
                 length: padding_tlv_len as u16,
             },
-            format: header::TbfFooterCredentialsType::Padding,
+            format: header::TbfFooterCredentialsType::Reserved,
             data: reserved_vec,
         };
         let creds = padding_credentials.generate().unwrap();

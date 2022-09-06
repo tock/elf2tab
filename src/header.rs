@@ -28,7 +28,7 @@ pub enum TbfHeaderTypes {
 #[derive(Clone, Copy, Debug)]
 #[allow(dead_code)]
 pub enum TbfFooterCredentialsType {
-    Padding = 0,
+    Reserved = 0,
     CleartextID = 1,
     Rsa3072Key = 2,
     Rsa4096Key = 3,
