@@ -10,6 +10,7 @@ use elf2tab::convert;
 fn main() {
     let opt = cmdline::Opt::from_args();
 
+    // Get app name from command line arguments or use empty string as default.
     let package_name = opt
         .package_name
         .as_ref()
@@ -31,8 +32,6 @@ fn main() {
     writeln!(&mut metadata_toml, "tab-version = 1").unwrap();
     // Name is always set by elf2tab (even if it is empty).
     writeln!(&mut metadata_toml, "name = \"{}\"", package_name).unwrap();
-    // We don't currently tell elf2tab if this app only runs on certain boards.
-    writeln!(&mut metadata_toml, "only-for-boards = \"\"").unwrap();
     // Include "minimum-tock-kernel-version" key if a necessary kernel version
     // was specified.
     minimum_tock_kernel_version.map(|(major, minor)| {
@@ -40,6 +39,15 @@ fn main() {
             &mut metadata_toml,
             "minimum-tock-kernel-version = \"{}.{}\"",
             major, minor
+        )
+        .unwrap();
+    });
+    // Include "only-for-boards" key if specific boards were specified.
+    opt.supported_boards.as_ref().map(|supported_boards| {
+        writeln!(
+            &mut metadata_toml,
+            "only-for-boards = \"{}\"",
+            supported_boards.as_str()
         )
         .unwrap();
     });
@@ -139,6 +147,7 @@ fn main() {
             (opt.write_id, opt.read_ids.clone(), opt.access_ids.clone()),
             minimum_tock_kernel_version,
             add_trailing_padding,
+            opt.disabled,
             opt.minimum_footer_size,
             opt.app_version,
             opt.sha256_enable,

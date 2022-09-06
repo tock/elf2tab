@@ -135,7 +135,7 @@ dependencies = [
 
 [[package]]
 name = "elf2tab"
-version = "0.10.0-dev"
+version = "0.11.0-dev"
 dependencies = [
  "chrono",
  "elf",

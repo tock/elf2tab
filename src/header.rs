@@ -278,6 +278,8 @@ impl fmt::Display for TbfHeaderKernelVersion {
     }
 }
 
+const FLAGS_ENABLE: u32 = 0x0000_0001;
+
 pub struct TbfHeader {
     hdr_base: TbfHeaderBase,
     hdr_main: Option<TbfHeaderMain>,
@@ -341,6 +343,7 @@ impl TbfHeader {
         permissions: Vec<(u32, u32)>,
         storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
         kernel_version: Option<(u16, u16)>,
+        disabled: bool,
         include_program_header: bool,
     ) -> usize {
         // Need to calculate lengths ahead of time.
@@ -433,8 +436,11 @@ impl TbfHeader {
             header_length += mem::size_of::<TbfHeaderKernelVersion>();
         }
 
-        // Flags default to app is enabled.
-        let flags = 0x0000_0001;
+        let mut flags = 0x0000_0000;
+
+        if !disabled {
+            flags |= FLAGS_ENABLE
+        };
 
         // Fill in the fields that we can at this point.
         self.hdr_base.header_size = header_length as u16;
@@ -503,13 +509,13 @@ impl TbfHeader {
             }
 
             if let Some(read_ids) = storage_ids.1 {
-                hdr_persistent.base.length += read_ids.len() as u16;
+                hdr_persistent.base.length += (read_ids.len() as u16) * 4;
                 hdr_persistent.read_length = read_ids.len() as u16;
                 hdr_persistent.read_ids = read_ids;
             }
 
             if let Some(access_ids) = storage_ids.2 {
-                hdr_persistent.base.length += access_ids.len() as u16;
+                hdr_persistent.base.length += (access_ids.len() as u16) * 4;
                 hdr_persistent.access_length = access_ids.len() as u16;
                 hdr_persistent.access_ids = access_ids;
             }

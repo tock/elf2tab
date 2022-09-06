@@ -16,6 +16,7 @@ Converts Tock userspace programs from .elf files to Tock Application Bundles.
 
 FLAGS:
         --deterministic    Produce a deterministic TAB file
+        --disable          Mark the app as disabled in the TBF flags
     -h, --help             Prints help information
         --sha256           Add a SHA256 hash credential to each TAB
         --sha384           Add a SHA384 hash credential to each TAB
@@ -41,6 +42,7 @@ OPTIONS:
         --rsa4096-public <rsa4096-public-key>              Add an 4096-bit RSA signature credential containing this public key
         --stack <stack-size>                               in bytes
         --write_id <write_id>                              A storage ID used for writing data
+        --supported-boards <supported-boards>              Comma separated list of boards this app is compatible with
 
 ARGS:
     <elf[,architecture]>...    application file(s) to package
