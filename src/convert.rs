@@ -149,9 +149,12 @@ pub fn elf_to_tbf<W: Write>(
     /// Helper function to find the start section is inside a
     /// given segment.
     ///
-    /// This is necessary because the flash segment is not guaranteed 
+    /// This is necessary because the flash segment is not guaranteed
     /// to start at the same address as the start section.
-    fn find_start_in_segment<'a>(input: &'a elf::File, segment: &elf::types::ProgramHeader) -> Option<&'a elf::Section> {
+    fn find_start_in_segment<'a>(
+        input: &'a elf::File,
+        segment: &elf::types::ProgramHeader,
+    ) -> Option<&'a elf::Section> {
         let segment_start = segment.offset as u32;
         let segment_size = segment.filesz as u32;
         let segment_end = segment_start + segment_size;
@@ -194,9 +197,31 @@ pub fn elf_to_tbf<W: Write>(
                         let start = find_start_in_segment(input, segment)
                             .map(|section| section.shdr.addr as u32);
                         fixed_address_flash = match (fixed_address_flash, start) {
-                            (Some(prev_addr), Some(start)) =>
-                                Some(cmp::min(prev_addr, start as u32)),
-                            (prev, start) => prev.or(start),
+                            (Some(prev_addr), Some(start)) => {
+                                // We already found a candidate, and we found a
+                                // .start section. Keep looking for the lowest
+                                // address.
+                                Some(cmp::min(prev_addr, start as u32))
+                            }
+                            (None, None) => {
+                                // There was no .start section in the segment,
+                                // but the segment is still executable. We do
+                                // not have a current lowest, so we use this
+                                // segment address as our new best candidate.
+                                Some(segment.vaddr as u32)
+                            }
+                            (Some(prev_addr), None) => {
+                                // There was no .start section in the segment,
+                                // but the segment is still executable. We are
+                                // still looking for the lowest address, and
+                                // this might be it.
+                                Some(cmp::min(prev_addr, segment.vaddr as u32))
+                            }
+                            (None, Some(start)) => {
+                                // We found a .start section and haven't set our
+                                // lowest address yet, so we do that now.
+                                Some(start)
+                            }
                         };
                     }
                 }
