@@ -1,8 +1,6 @@
 # This workflow checks that the code is formatted using rustfmt.
 
 name: tock-ci
-env:
-  TERM: xterm # Makes tput work in actions output
 
 # Controls when the action will run. Triggers the workflow on push or pull
 # request events but only for the master branch.
@@ -26,7 +24,6 @@ jobs:
     steps:
       - uses: actions/checkout@v2
       - uses: actions-rs/toolchain@v1 # pulls version from rust-toolchain file
-      - uses: actions/setup-node@v1
         with:
           components: rustfmt
       - name: format
