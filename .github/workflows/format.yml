@@ -1,0 +1,30 @@
+# This workflow checks that the code is formatted using rustfmt.
+
+name: tock-ci
+
+# Controls when the action will run. Triggers the workflow on push or pull
+# request events but only for the master branch.
+on:
+  push:
+    branches-ignore: [ staging.tmp, trying.tmp ] # Run CI for all branches except bors tmp branches
+  pull_request: # Run CI for PRs on any branch
+
+permissions:
+  contents: read
+
+jobs:
+  ci-format:
+    strategy:
+      matrix:
+        os: [ubuntu-latest]
+    # The type of runner that the job will run on
+    runs-on: ${{ matrix.os }}
+
+    # Steps represent a sequence of tasks that will be executed as part of the job
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions-rs/toolchain@v1 # pulls version from rust-toolchain file
+        with:
+          components: rustfmt
+      - name: format
+        run:  cargo fmt --check

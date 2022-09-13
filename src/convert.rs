@@ -176,33 +176,33 @@ pub fn elf_to_tbf(
         false
     }
 
-    /// Helper function to find the start section is inside a
-    /// given segment.
+    /// Helper function to find the address of the first section inside a given
+    /// segment.
     ///
     /// This is necessary because the flash segment is not guaranteed
-    /// to start at the same address as the start section.
-    fn find_start_in_segment<'a>(
+    /// to start at the same address as the first section.
+    fn find_first_section_address_in_segment<'a>(
         input: &'a elf::File,
         segment: &elf::types::ProgramHeader,
-    ) -> Option<&'a elf::Section> {
+    ) -> Option<u32> {
         let segment_start = segment.offset as u32;
         let segment_size = segment.filesz as u32;
         let segment_end = segment_start + segment_size;
 
+        let mut first_section_address: Option<u32> = None;
         for section in input.sections.iter() {
             let section_start = section.shdr.offset as u32;
             let section_size = section.shdr.size as u32;
             let section_end = section_start + section_size;
 
-            if section_start >= segment_start
-                && section_end <= segment_end
-                && section_size > 0
-                && section.shdr.name == ".start"
-            {
-                return Some(section);
+            if section_start >= segment_start && section_end <= segment_end && section_size > 0 {
+                first_section_address = match first_section_address {
+                    Some(first_address) => Some(cmp::min(first_address, section.shdr.addr as u32)),
+                    None => Some(section.shdr.addr as u32),
+                };
             }
         }
-        None
+        first_section_address
     }
 
     // Do flash address.
@@ -220,17 +220,36 @@ pub fn elf_to_tbf(
                     // If this is standard Tock PIC, then this virtual address
                     // will be at 0x80000000. Otherwise, we interpret this to
                     // mean that the binary was compiled for a fixed address in
-                    // flash.
-                    if segment.vaddr == 0x80000000 {
+                    // flash. Once we confirm this we do not need to keep
+                    // checking.
+                    if segment.vaddr == 0x80000000 || fixed_address_flash_pic {
                         fixed_address_flash_pic = true;
                     } else {
-                        let start = find_start_in_segment(input, segment)
-                            .map(|section| section.shdr.addr as u32);
-                        fixed_address_flash = match (fixed_address_flash, start) {
-                            (Some(prev_addr), Some(start)) => {
-                                Some(cmp::min(prev_addr, start as u32))
+                        // We need to see if this segment represents the lowest
+                        // address in flash that we are going to specify this
+                        // app needs to be loaded at. To do this we compare this
+                        // segment to any previous and keep track of the lowest
+                        // address. However, we need to use the address of the
+                        // first _section_ in the segment, not just the address
+                        // of the segment, because a linker may insert padding.
+                        let segment_start = find_first_section_address_in_segment(input, segment);
+
+                        fixed_address_flash = match (fixed_address_flash, segment_start) {
+                            (Some(prev_addr), Some(segment_start)) => {
+                                // We already found a candidate, and we found a
+                                // new candidate. Keep looking for the lowest
+                                // address.
+                                Some(cmp::min(prev_addr, segment_start))
                             }
-                            (prev, start) => prev.or(start),
+                            (None, Some(segment_start)) => {
+                                // We found our first valid segment and haven't set our
+                                // lowest address yet, so we do that now.
+                                Some(segment_start)
+                            }
+                            (prev_addr, None) => {
+                                // We can't use this segment, so skip.
+                                prev_addr
+                            }
                         };
                     }
                 }
