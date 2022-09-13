@@ -9,22 +9,13 @@ use std::io::Write;
 use std::mem;
 use std::path::{Path, PathBuf};
 
-#[derive(Debug)]
-enum RsaError {
-    IO(std::io::Error),
-    //   BadPrivateKey,
-    //   OOM,
-    //   BadSignature,
-}
-
 /// Helper function for reading RSA DER key files.
-fn read_rsa_file(path: &std::path::Path) -> Result<Vec<u8>, RsaError> {
+fn read_rsa_file(path: &std::path::Path) -> Result<Vec<u8>, std::io::Error> {
     use std::io::Read;
 
-    let mut file = std::fs::File::open(path).map_err(|e| RsaError::IO(e))?;
+    let mut file = std::fs::File::open(path)?;
     let mut contents: Vec<u8> = Vec::new();
-    file.read_to_end(&mut contents)
-        .map_err(|e| RsaError::IO(e))?;
+    file.read_to_end(&mut contents)?;
     Ok(contents)
 }
 
