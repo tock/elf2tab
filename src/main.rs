@@ -34,23 +34,23 @@ fn main() {
     writeln!(&mut metadata_toml, "name = \"{}\"", package_name).unwrap();
     // Include "minimum-tock-kernel-version" key if a necessary kernel version
     // was specified.
-    minimum_tock_kernel_version.map(|(major, minor)| {
+    if let Some((major, minor)) = minimum_tock_kernel_version {
         writeln!(
             &mut metadata_toml,
             "minimum-tock-kernel-version = \"{}.{}\"",
             major, minor
         )
         .unwrap();
-    });
+    }
     // Include "only-for-boards" key if specific boards were specified.
-    opt.supported_boards.as_ref().map(|supported_boards| {
+    if let Some(supported_boards) = opt.supported_boards.as_ref() {
         writeln!(
             &mut metadata_toml,
             "only-for-boards = \"{}\"",
             supported_boards.as_str()
         )
         .unwrap();
-    });
+    }
     // Add build-date metadata unless a deterministic build is desired.
     if !opt.deterministic {
         let build_date = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
@@ -158,15 +158,12 @@ fn main() {
         )
         .unwrap();
         if opt.verbose {
-            println!("");
+            println!();
         }
 
-        match outfile.write_all(output_vector.as_ref()) {
-            Err(e) => {
-                println!("Failed to write TBF: {:?}", e);
-                return;
-            }
-            _ => {}
+        if let Err(e) = outfile.write_all(output_vector.as_ref()) {
+            println!("Failed to write TBF: {:?}", e);
+            return;
         }
 
         // Add the file to the TAB tar file.

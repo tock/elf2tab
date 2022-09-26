@@ -145,7 +145,7 @@ impl TbfFooterCredentials {
 }
 
 impl fmt::Display for TbfHeaderBase {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
             "
@@ -159,7 +159,7 @@ impl fmt::Display for TbfHeaderBase {
 }
 
 impl fmt::Display for TbfHeaderMain {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
             "
@@ -172,7 +172,7 @@ impl fmt::Display for TbfHeaderMain {
 }
 
 impl fmt::Display for TbfHeaderProgram {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
             "
@@ -191,7 +191,7 @@ impl fmt::Display for TbfHeaderProgram {
 }
 
 impl fmt::Display for TbfHeaderWriteableFlashRegion {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
             "
@@ -204,7 +204,7 @@ impl fmt::Display for TbfHeaderWriteableFlashRegion {
 }
 
 impl fmt::Display for TbfHeaderFixedAddresses {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
             "
@@ -216,7 +216,7 @@ impl fmt::Display for TbfHeaderFixedAddresses {
 }
 
 impl fmt::Display for TbfHeaderPermissions {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
             "
@@ -237,7 +237,7 @@ impl fmt::Display for TbfHeaderPermissions {
 }
 
 impl fmt::Display for TbfHeaderPersistentAcl {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         writeln!(
             f,
             "
@@ -264,7 +264,7 @@ impl fmt::Display for TbfHeaderPersistentAcl {
 }
 
 impl fmt::Display for TbfHeaderKernelVersion {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         // ^x.y means >= x.y, < (x+1).0
         writeln!(
             f,
@@ -399,7 +399,7 @@ impl TbfHeader {
             }
         }
 
-        if perms.len() > 0 {
+        if !perms.is_empty() {
             // base
             header_length += mem::size_of::<TbfHeaderTlv>();
             // length
@@ -479,7 +479,7 @@ impl TbfHeader {
             });
         }
 
-        if perms.len() > 0 {
+        if !perms.is_empty() {
             self.hdr_permissions = Some(TbfHeaderPermissions {
                 base: TbfHeaderTlv {
                     tipe: TbfHeaderTypes::Permissions,
@@ -591,7 +591,7 @@ impl TbfHeader {
             init_fn_offset: self.hdr_main.map_or(0, |main| main.init_fn_offset),
             protected_size: self.hdr_main.map_or(0, |main| main.protected_size),
             minimum_ram_size: self.hdr_main.map_or(0, |main| main.minimum_ram_size),
-            binary_end_offset: binary_end_offset,
+            binary_end_offset,
             app_version: 0,
         });
     }
@@ -726,7 +726,7 @@ impl TbfHeader {
 }
 
 impl fmt::Display for TbfHeader {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "TBF Header:")?;
         write!(f, "{}", self.hdr_base)?;
         self.hdr_main.map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;

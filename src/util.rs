@@ -37,28 +37,28 @@ mod test {
     use super::{align_to, amount_alignment_needed};
 
     #[test]
-    pub fn keeps_aligned_values() {
+    fn keeps_aligned_values() {
         let result = align_to(8, 4);
 
         assert_eq!(result, 8);
     }
 
     #[test]
-    pub fn aligns_to_the_next_box() {
+    fn aligns_to_the_next_box() {
         let result = align_to(3, 4);
 
         assert_eq!(result, 4);
     }
 
     #[test]
-    pub fn aligns_to_the_next_box_with_another_box_size() {
+    fn aligns_to_the_next_box_with_another_box_size() {
         let result = align_to(7, 8);
 
         assert_eq!(result, 8);
     }
 
     #[test]
-    pub fn computes_distance_to_lattice_point() {
+    fn computes_distance_to_lattice_point() {
         let result = amount_alignment_needed(7, 8);
 
         assert_eq!(result, 1);
