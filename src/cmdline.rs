@@ -3,20 +3,13 @@
 use std::error::Error;
 use std::ffi::OsStr;
 use std::path::PathBuf;
-use structopt::StructOpt;
 
 fn usage() -> &'static str {
     "elf2tab [FLAGS] [OPTIONS] ELF[,ARCHITECTURE]...
 Converts Tock userspace programs from .elf files to Tock Application Bundles."
 }
 
-fn parse_perms<T, U>(s: &str) -> Result<(T, U), Box<dyn Error>>
-where
-    T: std::str::FromStr,
-    T::Err: Error + 'static,
-    U: std::str::FromStr,
-    U::Err: Error + 'static,
-{
+fn parse_perms(s: &str) -> Result<(u32, u32), Box<dyn Error + Send + Sync>> {
     let pos = s
         .find(',')
         .ok_or_else(|| format!("invalid number,option: no `,` found in `{}`", s))?;
@@ -51,14 +44,14 @@ impl From<&OsStr> for ElfFile {
     }
 }
 
-#[derive(StructOpt, Debug)]
+#[derive(clap::StructOpt, Debug)]
 #[structopt(
     about = "Convert Tock userland apps from .elf files to Tock Application Bundles (TABs or .tab files).",
     usage = usage(),
-    global_setting(structopt::clap::AppSettings::ColoredHelp)
+    global_setting(clap::AppSettings::ColoredHelp)
 )]
 pub struct Opt {
-    #[structopt(short = "v", long = "verbose", help = "Be verbose")]
+    #[structopt(short = 'v', long = "verbose", help = "Be verbose")]
     pub verbose: bool,
 
     #[structopt(long = "deterministic", help = "Produce a deterministic TAB file")]
@@ -86,7 +79,7 @@ pub struct Opt {
 
     #[structopt(
         long = "output-file",
-        short = "o",
+        short = 'o',
         name = "filename",
         default_value = "TockApp.tab",
         parse(from_os_str),
@@ -96,7 +89,7 @@ pub struct Opt {
 
     #[structopt(
         long = "package-name",
-        short = "n",
+        short = 'n',
         name = "pkg-name",
         help = "package name"
     )]
@@ -236,7 +229,7 @@ mod test {
     #[cfg(test)]
     use super::Opt;
     #[cfg(test)]
-    use structopt::StructOpt;
+    use clap::StructOpt;
 
     #[test]
     // elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=[<filename>]] <elf[,architecture]>...

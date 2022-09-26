@@ -15,9 +15,9 @@ path = "src/main.rs"
 
 [dependencies]
 chrono = "0.4.2"
+clap = { version = "3.2.22", features = ["derive"] }
 tar = "0.4.36"
 elf = "0.0.10"
-structopt = "0.3.14"
 sha2 = "0.10.2"
 ring = "0.16.20"
 rsa-der = "0.3.0"

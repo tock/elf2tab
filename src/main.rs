@@ -1,8 +1,8 @@
+use clap::StructOpt;
 use std::fmt::Write as fmtwrite;
 use std::fs;
 use std::io;
 use std::io::{Seek, Write};
-use structopt::StructOpt;
 
 use elf2tab::cmdline;
 use elf2tab::convert;
