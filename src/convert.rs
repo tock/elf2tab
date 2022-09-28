@@ -455,8 +455,7 @@ pub fn elf_to_tbf<W: Write>(
                     } else {
                         println!(
                             "Warning! Padding to section {} is too large ({} bytes).", 
-                            section.shdr.name,
-                            padding
+                            section.shdr.name, padding
                         );
                     }
                 }
