@@ -91,7 +91,7 @@ fn main() {
             // `<architecture>.elf` and use the base name as the architecture.
             elf_file
                 .path
-                .file_name()
+                .file_stem()
                 .unwrap()
                 .to_str()
                 .unwrap()
