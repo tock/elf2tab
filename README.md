@@ -18,22 +18,29 @@ FLAGS:
         --deterministic    Produce a deterministic TAB file
         --disable          Mark the app as disabled in the TBF flags
     -h, --help             Prints help information
+        --sha256           Add a SHA256 hash credential to each TAB
+        --sha384           Add a SHA384 hash credential to each TAB
+        --sha512           Add a SHA512 hash credential to each TAB
     -V, --version          Prints version information
     -v, --verbose          Be verbose
 
 OPTIONS:
         --access_ids <access_ids>...                       Storage IDs that this app is allowed to write
+        --app-version <app-version>                        Set the version number [default: 0]
     -o, --output-file <filename>                           output file name [default: TockApp.tab]
         --app-heap <heap-size>                             in bytes [default: 1024]
         --kernel-heap <kernel-heap-size>                   in bytes [default: 1024]
         --kernel-major <kernel-major-version>              The kernel version that the app requires
         --kernel-minor <kernel-minor-version>              The minimum kernel minor version that the app requires
         --minimum-ram-size <min-ram-size>                  in bytes
+        --minimum-footer-size <min-footer-size>            Minimum number of bytes to reserve space for in the footer [default: 0]
         --permissions <permissions>...                     A list of driver numbers and allowed commands
     -n, --package-name <pkg-name>                          package name
         --protected-region-size <protected-region-size>    Size of the protected region (including headers)
         --read_ids <read_ids>...                           Storage IDs that this app is allowed to read
-        --stack <stack-size>                               in bytes [default: 2048]
+        --rsa4096-private <rsa4096-private-key>            Add an 4096-bit RSA signature credential using this private key
+        --rsa4096-public <rsa4096-public-key>              Add an 4096-bit RSA signature credential containing this public key
+        --stack <stack-size>                               in bytes
         --write_id <write_id>                              A storage ID used for writing data
         --supported-boards <supported-boards>              Comma separated list of boards this app is compatible with
 
@@ -58,6 +65,28 @@ Compiling elf2tab
 With rustup installed, simply run:
 
     cargo build
+
+Adding TBF Credentials
+----------------------
+
+elf2tab supports adding credentials to the TBF footer of the generated TBF
+files. To add a hash, use one or more of these flags: `--sha256`, `--sha384`,
+`--sha512`.
+
+elf2tab can also sign the TBF with a public/private RSA key pair. To generate
+compatible keys:
+
+    $ openssl genrsa -aes256 -out tockkey.private.pem 4096
+    $ openssl rsa -in tockkey.private.pem -outform der -out tockkey.private.der
+    $ openssl rsa -in tockkey.private.pem -outform der -pubout -out tockkey.public.der
+
+Then pass the keys to elf2tab:
+
+    $ elf2tab --rsa4096-private tockkey.private.der --rsa4096-public tockkey.public.der ...
+
+Example including multiple credentials:
+
+    $ elf2tab --sha256 --sha384 --sha512 --rsa4096-private tockkey.private.der --rsa4096-public tockkey.public.der ...
 
 
 elf2tab Details

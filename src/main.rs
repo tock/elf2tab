@@ -1,7 +1,7 @@
 use std::fmt::Write as fmtwrite;
 use std::fs;
 use std::io;
-use std::io::Seek;
+use std::io::{Seek, Write};
 use structopt::StructOpt;
 
 use elf2tab::cmdline;
@@ -130,9 +130,13 @@ fn main() {
         if opt.verbose {
             println!("Creating {:?}", tbf_path);
         }
+        // First write the TBF into a vector, to allow each read access
+        // for generating credentials; once it's written to the vector, flush
+        // it to a file.
+        let mut output_vector = Vec::<u8>::new();
         convert::elf_to_tbf(
             &elffile,
-            &mut outfile,
+            &mut output_vector,
             opt.package_name.clone(),
             opt.verbose,
             opt.stack_size,
@@ -144,10 +148,25 @@ fn main() {
             minimum_tock_kernel_version,
             add_trailing_padding,
             opt.disabled,
+            opt.minimum_footer_size,
+            opt.app_version,
+            opt.sha256_enable,
+            opt.sha384_enable,
+            opt.sha512_enable,
+            opt.rsa4096_private_key.clone(),
+            opt.rsa4096_public_key.clone(),
         )
         .unwrap();
         if opt.verbose {
             println!("");
+        }
+
+        match outfile.write_all(output_vector.as_ref()) {
+            Err(e) => {
+                println!("Failed to write TBF: {:?}", e);
+                return;
+            }
+            _ => {}
         }
 
         // Add the file to the TAB tar file.
