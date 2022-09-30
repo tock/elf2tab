@@ -29,14 +29,11 @@ pub enum TbfHeaderTypes {
 #[allow(dead_code)]
 pub enum TbfFooterCredentialsType {
     Reserved = 0,
-    CleartextID = 1,
-    Rsa3072Key = 2,
-    Rsa4096Key = 3,
-    Rsa3072KeyWithID = 4,
-    Rsa4096KeyWithID = 5,
-    SHA256 = 6,
-    SHA384 = 7,
-    SHA512 = 8,
+    Rsa3072Key = 1,
+    Rsa4096Key = 2,
+    SHA256 = 3,
+    SHA384 = 4,
+    SHA512 = 5,
 }
 
 #[repr(C)]
