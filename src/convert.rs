@@ -436,19 +436,27 @@ pub fn elf_to_tbf<W: Write>(
                 // a new address segment. We need the start of the next section
                 // to be after the previous one, and the gap to not be _too_
                 // large.
-                if start > end && (start - end) < 100 {
+                if start > end {
                     // If this is the next section in the same segment, then
                     // check if there is any padding required.
                     let padding = start - end;
-                    if padding > 0 {
-                        if verbose {
-                            println!("  Adding {} bytes of padding between sections", padding,);
-                        }
 
-                        // Increment our index pointer and add the padding bytes.
-                        binary_index += padding;
-                        let zero_buf = [0_u8; 512];
-                        binary.extend(&zero_buf[..padding]);
+                    if padding < 1024 {
+                        if padding > 0 {
+                            if verbose {
+                                println!("  Adding {} bytes of padding between sections", padding,);
+                            }
+
+                            // Increment our index pointer and add the padding bytes.
+                            binary_index += padding;
+                            let zero_buf = [0_u8; 1024];
+                            binary.extend(&zero_buf[..padding]);
+                        }
+                    } else {
+                        println!(
+                            "Warning! Padding to section {} is too large ({} bytes).",
+                            section.shdr.name, padding
+                        );
                     }
                 }
             }
