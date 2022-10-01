@@ -48,7 +48,8 @@ impl From<&OsStr> for ElfFile {
 #[structopt(
     about = "Convert Tock userland apps from .elf files to Tock Application Bundles (TABs or .tab files).",
     usage = usage(),
-    global_setting(clap::AppSettings::ColoredHelp)
+    global_setting(clap::AppSettings::ColoredHelp),
+    version,
 )]
 pub struct Opt {
     #[structopt(short = 'v', long = "verbose", help = "Be verbose")]
