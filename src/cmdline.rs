@@ -4,11 +4,6 @@ use std::error::Error;
 use std::ffi::OsStr;
 use std::path::PathBuf;
 
-fn usage() -> &'static str {
-    "elf2tab [FLAGS] [OPTIONS] ELF[,ARCHITECTURE]...
-Converts Tock userspace programs from .elf files to Tock Application Bundles."
-}
-
 fn parse_perms(s: &str) -> Result<(u32, u32), Box<dyn Error + Send + Sync>> {
     let pos = s
         .find(',')
@@ -18,7 +13,7 @@ fn parse_perms(s: &str) -> Result<(u32, u32), Box<dyn Error + Send + Sync>> {
 
 /// Helper struct for keeping track of the ELF files to convert and an optional
 /// architecture string.
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ElfFile {
     /// Caller must provide a path to the ELF.
     pub path: PathBuf,
@@ -44,33 +39,31 @@ impl From<&OsStr> for ElfFile {
     }
 }
 
-#[derive(clap::StructOpt, Debug)]
-#[structopt(
+#[derive(clap::Parser, Debug)]
+#[command(
     about = "Convert Tock userland apps from .elf files to Tock Application Bundles (TABs or .tab files).",
-    usage = usage(),
-    global_setting(clap::AppSettings::ColoredHelp),
-    version,
+    version
 )]
 pub struct Opt {
-    #[structopt(short = 'v', long = "verbose", help = "Be verbose")]
+    #[arg(short = 'v', long = "verbose", help = "Be verbose")]
     pub verbose: bool,
 
-    #[structopt(long = "deterministic", help = "Produce a deterministic TAB file")]
+    #[arg(long = "deterministic", help = "Produce a deterministic TAB file")]
     pub deterministic: bool,
 
-    #[structopt(long = "disable", help = "Mark the app as disabled in the TBF flags")]
+    #[arg(long = "disable", help = "Mark the app as disabled in the TBF flags")]
     pub disabled: bool,
 
-    #[structopt(
+    #[arg(
         long = "app-version",
         help = "Set the version number",
         default_value = "0"
     )]
     pub app_version: u32,
 
-    #[structopt(
+    #[arg(
         long = "minimum-ram-size",
-        name = "min-ram-size",
+        id = "min-ram-size",
         help = "in bytes",
         conflicts_with = "stack-size",
         conflicts_with = "heap-size",
@@ -78,148 +71,150 @@ pub struct Opt {
     )]
     pub minimum_stack_size: Option<u32>,
 
-    #[structopt(
+    #[arg(
         long = "output-file",
         short = 'o',
-        name = "filename",
+        id = "filename",
         default_value = "TockApp.tab",
-        parse(from_os_str),
         help = "output file name"
     )]
     pub output: PathBuf,
 
-    #[structopt(
+    #[arg(
         long = "package-name",
         short = 'n',
-        name = "pkg-name",
+        id = "pkg-name",
         help = "package name"
     )]
     pub package_name: Option<String>,
 
-    #[structopt(long = "stack", name = "stack-size", help = "in bytes")]
+    #[arg(long = "stack", id = "stack-size", help = "in bytes")]
     pub stack_size: Option<u32>,
 
-    #[structopt(
+    #[arg(
         long = "app-heap",
-        name = "heap-size",
+        id = "heap-size",
         default_value = "1024",
         help = "in bytes"
     )]
     pub app_heap_size: u32,
 
-    #[structopt(
+    #[arg(
         long = "kernel-heap",
-        name = "kernel-heap-size",
+        id = "kernel-heap-size",
         default_value = "1024",
         help = "in bytes"
     )]
     pub kernel_heap_size: u32,
 
-    #[structopt(
-        name = "elf[,architecture]",
+    #[arg(
+        id = "elf[,architecture]",
         help = "application file(s) to package",
-        parse(from_os_str),
-        required = true
+        num_args = 1..,
+        required = true,
     )]
     pub input: Vec<ElfFile>,
 
-    #[structopt(
+    #[arg(
         long = "protected-region-size",
-        name = "protected-region-size",
+        id = "protected-region-size",
         help = "Size of the protected region (including headers)"
     )]
     pub protected_region_size: Option<u32>,
 
-    #[structopt(
+    #[arg(
         long = "permissions",
-        name = "permissions",
+        id = "permissions",
         help = "A list of driver numbers and allowed commands",
-        parse(try_from_str = parse_perms),
+        num_args = 1..,
+        value_parser = parse_perms,
     )]
     pub permissions: Vec<(u32, u32)>,
 
-    #[structopt(
+    #[arg(
         long = "write_id",
-        name = "write_id",
+        id = "write_id",
         help = "A storage ID used for writing data"
     )]
     pub write_id: Option<u32>,
 
-    #[structopt(
+    #[arg(
         long = "read_ids",
-        name = "read_ids",
-        help = "Storage IDs that this app is allowed to read"
+        id = "read_ids",
+        help = "Storage IDs that this app is allowed to read",
+        num_args = 1..,
     )]
     pub read_ids: Option<Vec<u32>>,
 
-    #[structopt(
+    #[arg(
         long = "access_ids",
-        name = "access_ids",
-        help = "Storage IDs that this app is allowed to write"
+        id = "access_ids",
+        help = "Storage IDs that this app is allowed to write",
+        num_args = 1..,
     )]
     pub access_ids: Option<Vec<u32>>,
 
-    #[structopt(
+    #[arg(
         long = "kernel-major",
-        name = "kernel-major-version",
+        id = "kernel-major-version",
         help = "The kernel version that the app requires"
     )]
     pub kernel_major: Option<u16>,
 
-    #[structopt(
+    #[arg(
         long = "kernel-minor",
-        name = "kernel-minor-version",
+        id = "kernel-minor-version",
         requires = "kernel-major-version",
         help = "The minimum kernel minor version that the app requires"
     )]
     pub kernel_minor: Option<u16>,
 
-    #[structopt(
+    #[arg(
         long = "supported-boards",
-        name = "supported-boards",
+        id = "supported-boards",
         help = "comma separated list of boards this app is compatible with"
     )]
     pub supported_boards: Option<String>,
 
-    #[structopt(
+    #[arg(
         long = "minimum-footer-size",
-        name = "min-footer-size",
+        id = "min-footer-size",
         help = "Minimum number of bytes to reserve space for in the footer",
         default_value = "0"
     )]
     pub minimum_footer_size: u32,
 
-    #[structopt(
+    #[arg(
         long = "sha256",
-        name = "sha256-add",
+        id = "sha256-add",
         help = "Add a SHA256 hash credential to each TBF"
     )]
     pub sha256_enable: bool,
 
-    #[structopt(
+    #[arg(
         long = "sha384",
-        name = "sha384-add",
+        id = "sha384-add",
         help = "Add a SHA384 hash credential to each TBF"
     )]
     pub sha384_enable: bool,
 
-    #[structopt(
+    #[arg(
         long = "sha512",
-        name = "sha512-add",
+        id = "sha512-add",
         help = "Add a SHA512 hash credential to each TBF"
     )]
     pub sha512_enable: bool,
 
-    #[structopt(
+    #[arg(
         long = "rsa4096-private",
-        name = "rsa4096-private-key",
+        id = "rsa4096-private-key",
         help = "Add an 4096-bit RSA signature credential using this private key"
     )]
     pub rsa4096_private_key: Option<PathBuf>,
 
-    #[structopt(
+    #[arg(
         long = "rsa4096-public",
-        name = "rsa4096-public-key",
+        id = "rsa4096-public-key",
         help = "Add an 4096-bit RSA signature credential containing this public key"
     )]
     pub rsa4096_public_key: Option<PathBuf>,
@@ -230,29 +225,29 @@ mod test {
     #[cfg(test)]
     use super::Opt;
     #[cfg(test)]
-    use clap::StructOpt;
+    use clap::Parser;
 
     #[test]
     // elf2tab [FLAGS] [--package-name=<pkg-name>] [--output-file=[<filename>]] <elf[,architecture]>...
     fn simple_invocations_succeed() {
         {
             let args = vec!["elf2tab", "app.elf"];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_ok());
         }
         {
             let args = vec!["elf2tab", "--package-name", "my-pkg", "app.elf"];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_ok());
         }
         {
             let args = vec!["elf2tab", "--output-file", "out.tab", "app.elf"];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_ok());
         }
         {
             let args = vec!["elf2tab", "--package-name", "my-pkg", "app.elf"];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_ok());
         }
         {
@@ -264,7 +259,7 @@ mod test {
                 "pkg-name",
                 "app.elf",
             ];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             println!("{:?}", result);
             assert!(result.is_ok());
         }
@@ -275,7 +270,7 @@ mod test {
     fn simple_invocations_fail() {
         {
             let args = vec!["elf2tab", "app.elf", "--package-name"];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_err());
         }
     }
@@ -292,7 +287,7 @@ mod test {
                 "10",
                 "app.elf",
             ];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_ok());
         }
     }
@@ -308,7 +303,7 @@ mod test {
                 "--minimum-ram-size",
                 "app.elf",
             ];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_err());
         }
         {
@@ -322,7 +317,7 @@ mod test {
                 "10",
                 "app.elf",
             ];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_err());
         }
         {
@@ -336,7 +331,7 @@ mod test {
                 "10",
                 "app.elf",
             ];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_err());
         }
         {
@@ -350,7 +345,7 @@ mod test {
                 "10",
                 "app.elf",
             ];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_err());
         }
     }
@@ -368,7 +363,7 @@ mod test {
                 "10",
                 "app.elf",
             ];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_ok());
         }
         {
@@ -380,7 +375,7 @@ mod test {
                 "10",
                 "app.elf",
             ];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_ok());
         }
         {
@@ -392,7 +387,7 @@ mod test {
                 "10",
                 "app.elf",
             ];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_ok());
         }
         {
@@ -408,7 +403,7 @@ mod test {
                 "10",
                 "app.elf",
             ];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_ok());
         }
     }
@@ -428,7 +423,7 @@ mod test {
                 "10",
                 "app.elf",
             ];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_err());
         }
         {
@@ -442,7 +437,7 @@ mod test {
                 "10",
                 "app.elf",
             ];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_err());
         }
         {
@@ -456,7 +451,7 @@ mod test {
                 "10",
                 "app.elf",
             ];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_err());
         }
     }
@@ -476,7 +471,7 @@ mod test {
                 "2 3",
                 "app.elf",
             ];
-            let result = Opt::from_iter_safe(args.iter());
+            let result = Opt::try_parse_from(args.iter());
             assert!(result.is_err());
         }
     }
