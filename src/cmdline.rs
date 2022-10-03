@@ -68,6 +68,13 @@ pub struct Opt {
     pub disabled: bool,
 
     #[structopt(
+        long = "app-version",
+        help = "Set the version number",
+        default_value = "0"
+    )]
+    pub app_version: u32,
+
+    #[structopt(
         long = "minimum-ram-size",
         name = "min-ram-size",
         help = "in bytes",
@@ -179,6 +186,49 @@ pub struct Opt {
         help = "comma separated list of boards this app is compatible with"
     )]
     pub supported_boards: Option<String>,
+
+    #[structopt(
+        long = "minimum-footer-size",
+        name = "min-footer-size",
+        help = "Minimum number of bytes to reserve space for in the footer",
+        default_value = "0"
+    )]
+    pub minimum_footer_size: u32,
+
+    #[structopt(
+        long = "sha256",
+        name = "sha256-add",
+        help = "Add a SHA256 hash credential to each TBF"
+    )]
+    pub sha256_enable: bool,
+
+    #[structopt(
+        long = "sha384",
+        name = "sha384-add",
+        help = "Add a SHA384 hash credential to each TBF"
+    )]
+    pub sha384_enable: bool,
+
+    #[structopt(
+        long = "sha512",
+        name = "sha512-add",
+        help = "Add a SHA512 hash credential to each TBF"
+    )]
+    pub sha512_enable: bool,
+
+    #[structopt(
+        long = "rsa4096-private",
+        name = "rsa4096-private-key",
+        help = "Add an 4096-bit RSA signature credential using this private key"
+    )]
+    pub rsa4096_private_key: Option<PathBuf>,
+
+    #[structopt(
+        long = "rsa4096-public",
+        name = "rsa4096-public-key",
+        help = "Add an 4096-bit RSA signature credential containing this public key"
+    )]
+    pub rsa4096_public_key: Option<PathBuf>,
 }
 
 mod test {
