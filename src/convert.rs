@@ -30,7 +30,6 @@ fn read_rsa_file(path: &std::path::Path) -> Result<Vec<u8>, std::io::Error> {
 ///   required RAM.
 /// - Sections that are writeable flash regions include .wfr in their name.
 pub fn elf_to_tbf(
-//    elf_file: &elf::File,
     input_file: &mut fs::File,
     output: &mut Vec<u8>,
     package_name: Option<String>,
@@ -42,7 +41,6 @@ pub fn elf_to_tbf(
     permissions: Vec<(u32, u32)>,
     storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
     kernel_version: Option<(u16, u16)>,
-//    trailing_padding: bool,
     disabled: bool,
     minimum_footer_size: u32,
     app_version: u32,
@@ -158,7 +156,10 @@ pub fn elf_to_tbf(
     /// This is necessary because we sometimes run into loadable segments that
     /// shouldn't really exist (they are at addresses outside of what was
     /// specified in the linker script), and we want to be able to skip them.
-    fn section_exists_in_segment(elf_file: &elf::File, segment: &elf::types::ProgramHeader) -> bool {
+    fn section_exists_in_segment(
+        elf_file: &elf::File,
+        segment: &elf::types::ProgramHeader,
+    ) -> bool {
         let segment_start = segment.offset as u32;
         let segment_size = segment.filesz as u32;
         let segment_end = segment_start + segment_size;
@@ -231,7 +232,8 @@ pub fn elf_to_tbf(
                         // address. However, we need to use the address of the
                         // first _section_ in the segment, not just the address
                         // of the segment, because a linker may insert padding.
-                        let segment_start = find_first_section_address_in_segment(&elf_file, segment);
+                        let segment_start =
+                            find_first_section_address_in_segment(&elf_file, segment);
 
                         fixed_address_flash = match (fixed_address_flash, segment_start) {
                             (Some(prev_addr), Some(segment_start)) => {
@@ -429,13 +431,16 @@ pub fn elf_to_tbf(
     //
     // The workaround is to take the crt0_header section address and compare to the first
     // program header, and then skip the offset differences
-    let crt0_header_address = elf_file.sections.iter().find_map(|section| {
-        if section.shdr.name == ".crt0_header" {
-            Some(section.shdr.addr as u64)
-        } else {
-            None
-        }
-    })
+    let crt0_header_address = elf_file
+        .sections
+        .iter()
+        .find_map(|section| {
+            if section.shdr.name == ".crt0_header" {
+                Some(section.shdr.addr as u64)
+            } else {
+                None
+            }
+        })
         .expect("ELF doesn't have .crt0_header section");
 
     // The init function is where the app will start executing, defined as an
@@ -537,7 +542,7 @@ pub fn elf_to_tbf(
 
                     last_section_address_end = Some(end_segment as usize);
                     binary_index += segment.filesz as usize - start_offset as usize;
-                    // start_offset only applies to first segment. 
+                    // start_offset only applies to first segment.
                     start_offset = 0;
                 }
             }
@@ -557,11 +562,10 @@ pub fn elf_to_tbf(
             // Check if this is a writeable flash region. If so, we need to
             // set the offset and size in the header.
             if section.shdr.name.contains(".wfr") && section.shdr.size > 0 {
-                let wfr_offset = section.shdr.addr - start_address + start_program_binary_index as u64;
-                tbfheader.set_writeable_flash_region_values(
-                    wfr_offset as u32,
-                    section.shdr.size as u32,
-                );
+                let wfr_offset =
+                    section.shdr.addr - start_address + start_program_binary_index as u64;
+                tbfheader
+                    .set_writeable_flash_region_values(wfr_offset as u32, section.shdr.size as u32);
             }
         }
     }
