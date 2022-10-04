@@ -137,6 +137,7 @@ fn main() {
         let mut output_vector = Vec::<u8>::new();
         convert::elf_to_tbf(
             &elffile,
+            &mut fsfile,
             &mut output_vector,
             opt.package_name.clone(),
             opt.verbose,

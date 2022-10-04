@@ -7,11 +7,10 @@ use std::cmp;
 use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem;
 use std::path::{Path, PathBuf};
+use std::{fs, io};
 
 /// Helper function for reading RSA DER key files.
 fn read_rsa_file(path: &std::path::Path) -> Result<Vec<u8>, std::io::Error> {
-    use std::io::Read;
-
     let mut file = std::fs::File::open(path)?;
     let mut contents: Vec<u8> = Vec::new();
     file.read_to_end(&mut contents)?;
