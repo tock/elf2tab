@@ -448,7 +448,7 @@ pub fn elf_to_tbf<W: Write>(
                     let start_segment = segment.paddr;
                     let end_segment = segment.paddr + segment.filesz;
 
-                    if input.ehdr.entry > start_segment && input.ehdr.entry < end_segment {
+                    if input.ehdr.entry >= start_segment && input.ehdr.entry < end_segment {
                         if entry_point_found {
                             // If the app is disabled just report a warning if we find
                             // two entry points. OTBN apps will contain two entry
