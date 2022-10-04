@@ -1,14 +1,14 @@
+use clap::Parser;
 use std::fmt::Write as fmtwrite;
 use std::fs;
 use std::io;
 use std::io::{Seek, Write};
-use structopt::StructOpt;
 
 use elf2tab::cmdline;
 use elf2tab::convert;
 
 fn main() {
-    let opt = cmdline::Opt::from_args();
+    let opt = cmdline::Opt::parse();
 
     // Get app name from command line arguments or use empty string as default.
     let package_name = opt
