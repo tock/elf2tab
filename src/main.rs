@@ -73,7 +73,8 @@ fn main() {
     // Iterate all input elfs. Convert them to Tock friendly binaries and then
     // add them to the TAB file.
     for elf_file in opt.input {
-        let elffile = elf::File::open_path(&elf_file.path).expect("Could not open the .elf file.");
+        let mut fsfile = fs::File::open(&elf_file.path).expect("Could not open the .elf file.");
+        let elffile = elf::File::open_stream(&mut fsfile).expect("Could not open the .elf file.");
 
         // The TBF will be written to the same place as the ELF, with a .tbf
         // extension.
@@ -132,6 +133,7 @@ fn main() {
         }
         convert::elf_to_tbf(
             &elffile,
+            &mut fsfile,
             &mut outfile,
             opt.package_name.clone(),
             opt.verbose,

@@ -1,9 +1,9 @@
 use crate::header;
 use crate::util::{self, align_to, amount_alignment_needed};
 use std::cmp;
-use std::io;
-use std::io::Write;
+use std::io::{Read, Seek, SeekFrom, Write};
 use std::mem;
+use std::{fs, io};
 
 /// Convert an ELF file to a TBF (Tock Binary Format) binary file.
 ///
@@ -19,6 +19,7 @@ use std::mem;
 /// - Sections that are writeable flash regions include .wfr in their name.
 pub fn elf_to_tbf<W: Write>(
     input: &elf::File,
+    input_file: &mut fs::File,
     output: &mut W,
     package_name: Option<String>,
     verbose: bool,
@@ -396,118 +397,93 @@ pub fn elf_to_tbf<W: Write>(
 
     let mut entry_point_found = false;
 
-    // We need to keep track of the address in the elf file for each section we
-    // are adding to the binary. Sections can have padding between them that we
-    // need to preserve. So, we track where the last section we wrote to our
-    // output binary ended in the segment address space specified in the .elf.
-    //
-    // *********
-    // TODO! (added 08/2021, but known about for a while before that)
-    // *********
-    // elf2tab needs to be re-written to use segments rather the hack we have
-    // here. We just assume we can ad-hoc determine the sections we need to
-    // include, when we should just use the segment mapping. Because of this,
-    // `last_section_address_end` is a hack as well.
     let mut last_section_address_end: Option<usize> = None;
 
-    // Iterate the sections in the ELF file. The sections are sorted in order of
-    // offset. Add the sections we need to the binary.
+    let mut start_address: u64 = 0;
+
+    // Iterate over ELF's Program Headers whe assemble the binary image as a contiguous
+    // memory block. Only take into consideration segments where filesz is greater than 0
+    for segment in &input.phdrs {
+        match segment.progtype {
+            elf::types::PT_LOAD => {
+                if segment.filesz > 0 {
+                    if last_section_address_end.is_some() {
+                        // We have a previous section. Now, check if there is any
+                        // padding between the sections in the .elf.
+                        let padding = last_section_address_end.unwrap() - segment.paddr as usize;
+                        if padding < 1024 {
+                            if padding > 0 {
+                                if verbose {
+                                    println!("Padding between Program Segments of {}", padding);
+                                }
+                            }
+
+                            let zero_buf = [0_u8; 1024];
+                            binary.extend(&zero_buf[..padding]);
+                            binary_index += padding;
+                        } else {
+                            println!(
+                                "Warning! Padding to Program segment is too large ({} bytes).",
+                                padding
+                            );
+                        }
+                    } else {
+                        // This is the first segment, take the Physical Address as the starting
+                        // point to compute offsets from
+                        start_address = segment.paddr;
+                    }
+
+                    // read the input file and append to the output binary
+                    input_file
+                        .seek(SeekFrom::Start(segment.offset))
+                        .expect("unable to seek input file");
+
+                    let mut content: Vec<u8> = vec![0; segment.filesz as usize];
+                    input_file
+                        .read_exact(&mut content)
+                        .expect("failed to read segment data");
+                    binary.extend(content);
+
+                    // verify if this segment contains the entry point
+                    let start_segment = segment.paddr;
+                    let end_segment = segment.paddr + segment.filesz;
+
+                    if input.ehdr.entry > start_segment && input.ehdr.entry < end_segment {
+                        if entry_point_found {
+                            // If the app is disabled just report a warning if we find
+                            // two entry points. OTBN apps will contain two entry
+                            // points, so this allows us to load them.
+                            if disabled {
+                                if verbose {
+                                    println!("Duplicate entry point in Program Segments");
+                                }
+                            } else {
+                                panic!("Duplicate entry point in Program Segments");
+                            }
+                        } else {
+                            init_fn_offset = (input.ehdr.entry - start_address) as u32
+                                + (binary_index - header_length) as u32;
+                            entry_point_found = true;
+                        }
+                    }
+
+                    last_section_address_end = Some(end_segment as usize);
+                    binary_index += segment.filesz as usize;
+                }
+            }
+            _ => {}
+        }
+    }
+
+    // iterate over sections to look for writable flash regions
     for s in &sections_sort {
         let section = &input.sections[s.0];
-
-        // If this is writeable, executable, or allocated, is nonzero length,
-        // and is type `PROGBITS` we want to add it to the binary.
         if (section.shdr.flags.0
             & (elf::types::SHF_WRITE.0 + elf::types::SHF_EXECINSTR.0 + elf::types::SHF_ALLOC.0)
             != 0)
             && section.shdr.shtype == elf::types::SHT_PROGBITS
             && section.shdr.size > 0
         {
-            // This is a section we are going to add to the binary.
-
-            if last_section_address_end.is_some() {
-                // We have a previous section. Now, check if there is any
-                // padding between the sections in the .elf.
-                let end = last_section_address_end.unwrap();
-                let start = section.shdr.addr as usize;
-
-                // Because we have flash and ram memory regions, we have
-                // multiple address spaces. This check lets us assume we are in
-                // a new address segment. We need the start of the next section
-                // to be after the previous one, and the gap to not be _too_
-                // large.
-                if start > end {
-                    // If this is the next section in the same segment, then
-                    // check if there is any padding required.
-                    let padding = start - end;
-
-                    if padding < 1024 {
-                        if padding > 0 {
-                            if verbose {
-                                println!("  Adding {} bytes of padding between sections", padding,);
-                            }
-
-                            // Increment our index pointer and add the padding bytes.
-                            binary_index += padding;
-                            let zero_buf = [0_u8; 1024];
-                            binary.extend(&zero_buf[..padding]);
-                        }
-                    } else {
-                        println!(
-                            "Warning! Padding to section {} is too large ({} bytes).",
-                            section.shdr.name, padding
-                        );
-                    }
-                }
-            }
-
-            // Determine if this is the section where the entry point is in. If it
-            // is, then we need to calculate the correct init_fn_offset.
-            if input.ehdr.entry >= section.shdr.addr
-                && input.ehdr.entry < (section.shdr.addr + section.shdr.size)
-                && (section.shdr.name.find("debug")).is_none()
-            {
-                // In the normal case, panic in case we detect entry point in
-                // multiple sections.
-                if entry_point_found {
-                    // If the app is disabled just report a warning if we find
-                    // two entry points. OTBN apps will contain two entry
-                    // points, so this allows us to load them.
-                    if disabled {
-                        if verbose {
-                            println!("Duplicate entry point in {} section", section.shdr.name);
-                        }
-                    } else {
-                        panic!("Duplicate entry point in {} section", section.shdr.name);
-                    }
-                }
-                entry_point_found = true;
-
-                if verbose {
-                    println!("Entry point is in {} section", section.shdr.name);
-                }
-                // init_fn_offset is specified relative to the end of the TBF
-                // header.
-                init_fn_offset = (input.ehdr.entry - section.shdr.addr) as u32
-                    + (binary_index - header_length) as u32
-            }
-
-            if verbose {
-                println!(
-                    "  Adding {0} section. Offset: {1} ({1:#x}). Length: {2} ({2:#x}) bytes.",
-                    section.shdr.name,
-                    binary_index,
-                    section.data.len(),
-                );
-            }
-            if amount_alignment_needed(binary_index as u32, 4) != 0 {
-                println!(
-                    "Warning! Placing section {} at {:#x}, which is not 4-byte aligned.",
-                    section.shdr.name, binary_index
-                );
-            }
-            binary.extend(&section.data);
-
             // Check if this is a writeable flash region. If so, we need to
             // set the offset and size in the header.
             if section.shdr.name.contains(".wfr") && section.shdr.size > 0 {
@@ -516,12 +492,6 @@ pub fn elf_to_tbf<W: Write>(
                     section.shdr.size as u32,
                 );
             }
-
-            // Now increment where we are in the binary.
-            binary_index += section.shdr.size as usize;
-
-            // And update our end in the .elf offset address space.
-            last_section_address_end = Some((section.shdr.addr + section.shdr.size) as usize);
         }
     }
 
