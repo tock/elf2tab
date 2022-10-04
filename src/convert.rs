@@ -455,6 +455,7 @@ pub fn elf_to_tbf(
 
     let mut start_address: u64 = 0;
     let mut start_offset: u64 = 0;
+    let start_program_binary_index = binary_index;
 
     // Iterate over ELF's Program Headers to assemble the binary image as a contiguous
     // memory block. Only take into consideration segments where filesz is greater than 0
@@ -490,6 +491,7 @@ pub fn elf_to_tbf(
                             panic!("Program Header segment start address should not be after .crt0_header section address");
                         }
                         start_offset = crt0_header_address - start_address;
+                        start_address += start_offset;
 
                         if verbose && start_offset > 0 {
                             println!("Program Header skipping {} bytes.", start_offset);
@@ -511,8 +513,8 @@ pub fn elf_to_tbf(
                     binary.extend(content);
 
                     // verify if this segment contains the entry point
-                    let start_segment = segment.paddr;
-                    let end_segment = segment.paddr + segment.filesz - start_offset;
+                    let start_segment = segment.paddr + start_offset;
+                    let end_segment = segment.paddr + segment.filesz;
 
                     if elf_file.ehdr.entry >= start_segment && elf_file.ehdr.entry < end_segment {
                         if entry_point_found {
@@ -534,7 +536,7 @@ pub fn elf_to_tbf(
                     }
 
                     last_section_address_end = Some(end_segment as usize);
-                    binary_index += segment.filesz as usize;
+                    binary_index += segment.filesz as usize - start_offset as usize;
                     // start_offset only applies to first segment. 
                     start_offset = 0;
                 }
@@ -555,8 +557,9 @@ pub fn elf_to_tbf(
             // Check if this is a writeable flash region. If so, we need to
             // set the offset and size in the header.
             if section.shdr.name.contains(".wfr") && section.shdr.size > 0 {
+                let wfr_offset = section.shdr.addr - start_address + start_program_binary_index as u64;
                 tbfheader.set_writeable_flash_region_values(
-                    binary_index as u32,
+                    wfr_offset as u32,
                     section.shdr.size as u32,
                 );
             }
