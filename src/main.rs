@@ -118,7 +118,6 @@ fn main() {
             .open(tbf_path.clone())
             .unwrap();
 
-
         // Do the conversion to a tock binary.
         if opt.verbose {
             println!("Creating {:?}", tbf_path);
