@@ -401,7 +401,7 @@ pub fn elf_to_tbf<W: Write>(
 
     let mut start_address: u64 = 0;
 
-    // Iterate over ELF's Program Headers whe assemble the binary image as a contiguous
+    // Iterate over ELF's Program Headers to assemble the binary image as a contiguous
     // memory block. Only take into consideration segments where filesz is greater than 0
     for segment in &input.phdrs {
         match segment.progtype {
@@ -410,7 +410,7 @@ pub fn elf_to_tbf<W: Write>(
                     if last_section_address_end.is_some() {
                         // We have a previous section. Now, check if there is any
                         // padding between the sections in the .elf.
-                        let padding = last_section_address_end.unwrap() - segment.paddr as usize;
+                        let padding = segment.paddr as usize - last_section_address_end.unwrap();
                         if padding < 1024 {
                             if padding > 0 {
                                 if verbose {
