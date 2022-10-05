@@ -291,6 +291,12 @@ pub struct TbfHeader {
     package_name_pad: usize,
 }
 
+impl Default for TbfHeader {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl TbfHeader {
     pub fn new() -> Self {
         Self {
