@@ -176,35 +176,6 @@ pub fn elf_to_tbf(
         false
     }
 
-    /// Helper function to find the address of the first section inside a given
-    /// segment.
-    ///
-    /// This is necessary because the flash segment is not guaranteed
-    /// to start at the same address as the first section.
-    fn find_first_section_address_in_segment<'a>(
-        elf_file: &'a elf::File,
-        segment: &elf::types::ProgramHeader,
-    ) -> Option<u32> {
-        let segment_start = segment.offset as u32;
-        let segment_size = segment.filesz as u32;
-        let segment_end = segment_start + segment_size;
-
-        let mut first_section_address: Option<u32> = None;
-        for section in elf_file.sections.iter() {
-            let section_start = section.shdr.offset as u32;
-            let section_size = section.shdr.size as u32;
-            let section_end = section_start + section_size;
-
-            if section_start >= segment_start && section_end <= segment_end && section_size > 0 {
-                first_section_address = match first_section_address {
-                    Some(first_address) => Some(cmp::min(first_address, section.shdr.addr as u32)),
-                    None => Some(section.shdr.addr as u32),
-                };
-            }
-        }
-        first_section_address
-    }
-
     // Do flash address.
     for segment in &elf_file.phdrs {
         match segment.progtype {
@@ -232,15 +203,16 @@ pub fn elf_to_tbf(
                         // address. However, we need to use the address of the
                         // first _section_ in the segment, not just the address
                         // of the segment, because a linker may insert padding.
-                        let segment_start =
-                            find_first_section_address_in_segment(&elf_file, segment);
+                        let segment_start = Some(segment.paddr as u32);
 
+                        // I don't think this is necessary considering the first segment
                         fixed_address_flash = match (fixed_address_flash, segment_start) {
                             (Some(prev_addr), Some(segment_start)) => {
-                                // We already found a candidate, and we found a
-                                // new candidate. Keep looking for the lowest
-                                // address.
-                                Some(cmp::min(prev_addr, segment_start))
+                                if segment_start < prev_addr {
+                                    panic!("Segment address is below the previous segment address");
+                                }
+
+                                Some(prev_addr)
                             }
                             (None, Some(segment_start)) => {
                                 // We found our first valid segment and haven't set our
@@ -421,28 +393,6 @@ pub fn elf_to_tbf(
         };
     binary_index += protected_region_size as usize;
 
-    // .crt0_header section is the first content in the TBF after TBF header
-    // the address of this section is used to differentiate from program headers
-    // pointing to another memory location due to alignment.
-    //
-    // This ELF program header mapping issue is observed in (rv32imc):
-    //   examples/tests/bare_bones
-    //   examples/tests/crash_immediately_syscall
-    //
-    // The workaround is to take the crt0_header section address and compare to the first
-    // program header, and then skip the offset differences
-    let crt0_header_address = elf_file
-        .sections
-        .iter()
-        .find_map(|section| {
-            if section.shdr.name == ".crt0_header" {
-                Some(section.shdr.addr as u64)
-            } else {
-                None
-            }
-        })
-        .expect("ELF doesn't have .crt0_header section");
-
     // The init function is where the app will start executing, defined as an
     // offset from the end of protected region at the beginning of the app in
     // flash. Typically the protected region only includes the TBF header. To
@@ -456,10 +406,9 @@ pub fn elf_to_tbf(
 
     let mut entry_point_found = false;
 
-    let mut last_section_address_end: Option<usize> = None;
+    let mut last_segment_address_end: Option<usize> = None;
 
     let mut start_address: u64 = 0;
-    let mut start_offset: u64 = 0;
     let start_program_binary_index = binary_index;
 
     // Iterate over ELF's Program Headers to assemble the binary image as a contiguous
@@ -468,10 +417,10 @@ pub fn elf_to_tbf(
         match segment.progtype {
             elf::types::PT_LOAD => {
                 if segment.filesz > 0 {
-                    if last_section_address_end.is_some() {
+                    if last_segment_address_end.is_some() {
                         // We have a previous section. Now, check if there is any
                         // padding between the sections in the .elf.
-                        let padding = segment.paddr as usize - last_section_address_end.unwrap();
+                        let padding = segment.paddr as usize - last_segment_address_end.unwrap();
                         if padding < 1024 {
                             if padding > 0 {
                                 if verbose {
@@ -492,33 +441,30 @@ pub fn elf_to_tbf(
                         // This is the first segment, take the Physical Address as the starting
                         // point to compute offsets from
                         start_address = segment.paddr;
-                        if start_address > crt0_header_address {
-                            panic!("Program Header segment start address should not be after .crt0_header section address");
-                        }
-                        start_offset = crt0_header_address - start_address;
-                        start_address += start_offset;
 
-                        if verbose && start_offset > 0 {
-                            println!("Program Header skipping {} bytes.", start_offset);
-                        }
-                        if start_offset > segment.filesz {
-                            panic!("Program Header segment size is smaller than .crt0_header section offset");
+                        // check if start of segment matches the fixed address flash (for non-PIC files)
+                        if let Some(fixed_start_address) = fixed_address_flash {
+                            if start_address != fixed_start_address as u64 {
+                                panic!("First Segment address ({:#x}) is different than fixed_address_flash ({:#x})",
+                                    start_address,
+                                    fixed_start_address);
+                            }
                         }
                     }
 
-                    // read the elf_file file and append to the output binary
+                    // read the ELF input file and append to the output binary
                     input_file
-                        .seek(SeekFrom::Start(segment.offset + start_offset))
-                        .expect("unable to seek elf_file file");
+                        .seek(SeekFrom::Start(segment.offset))
+                        .expect("unable to seek input ELF file");
 
-                    let mut content: Vec<u8> = vec![0; (segment.filesz - start_offset) as usize];
+                    let mut content: Vec<u8> = vec![0; (segment.filesz) as usize];
                     input_file
                         .read_exact(&mut content)
                         .expect("failed to read segment data");
                     binary.extend(content);
 
                     // verify if this segment contains the entry point
-                    let start_segment = segment.paddr + start_offset;
+                    let start_segment = segment.paddr;
                     let end_segment = segment.paddr + segment.filesz;
 
                     if elf_file.ehdr.entry >= start_segment && elf_file.ehdr.entry < end_segment {
@@ -540,10 +486,8 @@ pub fn elf_to_tbf(
                         }
                     }
 
-                    last_section_address_end = Some(end_segment as usize);
-                    binary_index += segment.filesz as usize - start_offset as usize;
-                    // start_offset only applies to first segment.
-                    start_offset = 0;
+                    last_segment_address_end = Some(end_segment as usize);
+                    binary_index += segment.filesz as usize;
                 }
             }
             _ => {}
