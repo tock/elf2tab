@@ -416,40 +416,25 @@ pub fn elf_to_tbf(
     for segment in &elf_file.phdrs {
         match segment.progtype {
             elf::types::PT_LOAD => {
+                // Do not include segments with zero size, as these likely go in memory, not flash.
                 if segment.filesz > 0 {
                     if last_segment_address_end.is_some() {
-                        // We have a previous section. Now, check if there is any
-                        // padding between the sections in the .elf.
-                        let padding = segment.paddr as usize - last_segment_address_end.unwrap();
-                        if padding < 1024 {
-                            if padding > 0 {
-                                if verbose {
-                                    println!("Padding between Program Segments of {}", padding);
-                                }
-                            }
+                        // We have a previous segment. Now, check if there is any
+                        // padding between the segments in the .elf.
+                        let mut padding =
+                            segment.paddr as usize - last_segment_address_end.unwrap();
+                        let zero_buf = [0_u8; 1024];
 
-                            let zero_buf = [0_u8; 1024];
-                            binary.extend(&zero_buf[..padding]);
-                            binary_index += padding;
-                        } else {
-                            println!(
-                                "Warning! Padding to Program segment is too large ({} bytes).",
-                                padding
-                            );
+                        while padding > 0 {
+                            let chunk = if padding > 1024 { 1024 } else { padding };
+                            binary.extend(&zero_buf[..chunk]);
+                            binary_index += chunk;
+                            padding -= chunk;
                         }
                     } else {
                         // This is the first segment, take the Physical Address as the starting
                         // point to compute offsets from
                         start_address = segment.paddr;
-
-                        // check if start of segment matches the fixed address flash (for non-PIC files)
-                        if let Some(fixed_start_address) = fixed_address_flash {
-                            if start_address != fixed_start_address as u64 {
-                                panic!("First Segment address ({:#x}) is different than fixed_address_flash ({:#x})",
-                                    start_address,
-                                    fixed_start_address);
-                            }
-                        }
                     }
 
                     // read the ELF input file and append to the output binary
