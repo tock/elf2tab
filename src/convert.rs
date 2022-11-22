@@ -1,3 +1,5 @@
+//! Convert ELF to TBF.
+
 use crate::header;
 use crate::util::{self, align_to, amount_alignment_needed};
 use ring::{rand, signature};
@@ -17,11 +19,101 @@ fn read_rsa_file(path: &std::path::Path) -> Result<Vec<u8>, std::io::Error> {
     Ok(contents)
 }
 
+/// Helper function to determine if any nonzero length section is inside a
+/// given segment.
+///
+/// This is necessary because we sometimes run into loadable segments that
+/// shouldn't really exist (they are at addresses outside of what was
+/// specified in the linker script), and we want to be able to skip them.
+fn section_exists_in_segment(elf_file: &elf::File, segment: &elf::types::ProgramHeader) -> bool {
+    for section in elf_file.sections.iter() {
+        let section_size = section.shdr.size as u32;
+
+        if section_size > 0 && section_in_segment(&section.shdr, segment) {
+            return true;
+        }
+    }
+    false
+}
+
+/// Helper function to determine if a section is within a specific segment.
+///
+/// Based on the function `section_in_segment` in
+/// https://github.com/eliben/pyelftools
+fn section_in_segment(
+    section: &elf::types::SectionHeader,
+    segment: &elf::types::ProgramHeader,
+) -> bool {
+    let segtype = segment.progtype;
+    let sectype = section.shtype;
+    let secflags = section.flags.0;
+
+    // Only PT_LOAD, PT_GNU_RELRO and PT_TLS segments can contain SHF_TLS
+    // sections.
+    if (secflags & elf::types::SHF_TLS.0 > 0)
+        && (segtype == elf::types::PT_TLS
+            || segtype == elf::types::PT_GNU_RELRO
+            || segtype == elf::types::PT_LOAD)
+    {
+        // OK
+    } else if (secflags & elf::types::SHF_TLS.0 == 0)
+        && !(segtype == elf::types::PT_TLS || segtype == elf::types::PT_GNU_RELRO)
+    {
+        // OK
+    } else {
+        return false;
+    }
+
+    // PT_LOAD and similar segments only have SHF_ALLOC sections.
+    if (secflags & elf::types::SHF_ALLOC.0 == 0)
+        && (segtype == elf::types::PT_LOAD
+            || segtype == elf::types::PT_DYNAMIC
+            || segtype == elf::types::PT_GNU_EH_FRAME
+            || segtype == elf::types::PT_GNU_RELRO
+            || segtype == elf::types::PT_GNU_STACK)
+    {
+        return false;
+    }
+
+    // In ELF_SECTION_IN_SEGMENT_STRICT the flag check_vma is on, so if this
+    // is an alloc section, check whether its VMA is in bounds.
+    if secflags & elf::types::SHF_ALLOC.0 > 0 {
+        let secaddr = section.addr;
+        let vaddr = segment.vaddr;
+
+        // This checks that the section is wholly contained in the segment.
+        // The third condition is the 'strict' one - an empty section will
+        // not match at the very end of the segment (unless the segment is
+        // also zero size, which is handled by the second condition).
+        if !(secaddr >= vaddr
+            && secaddr - vaddr + section.size <= segment.memsz
+            && secaddr - vaddr <= segment.memsz - 1)
+        {
+            return false;
+        }
+    }
+
+    // If we've come this far and it's a NOBITS section, it's in the
+    // segment.
+    if sectype == elf::types::SHT_NOBITS {
+        return true;
+    }
+
+    let secoffset = section.offset;
+    let poffset = segment.offset;
+
+    // Same logic as with secaddr vs. vaddr checks above, just on offsets in
+    // the file.
+    return secoffset >= poffset
+        && secoffset - poffset + section.size <= segment.filesz
+        && secoffset - poffset <= segment.filesz - 1;
+}
+
 /// Convert an ELF file to a TBF (Tock Binary Format) binary file.
 ///
-/// This will place all writeable and executable sections from the ELF file
-/// into a binary and prepend a TBF header to it. For all writeable sections,
-/// if there is a .rel.X section it will be included at the end with a 32 bit
+/// This will place all segments from the ELF file into a binary and prepend a
+/// TBF header to it. For all writeable sections in the included segments, if
+/// there is a .rel.X section it will be included at the end with a 32 bit
 /// length parameter first.
 ///
 /// Assumptions:
@@ -51,6 +143,8 @@ pub fn elf_to_tbf(
     rsa4096_public_key: Option<PathBuf>,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
+
+    // Load and parse ELF.
     let elf_file = elf::File::open_stream(input_file).expect("Could not open the .elf file.");
 
     // Adding padding to the end of cortex-m apps. Check for a cortex-m app
@@ -61,14 +155,13 @@ pub fn elf_to_tbf(
     // RISC-V apps do not need to be sized to power of two.
     let trailing_padding = elf_file.ehdr.machine.0 == 0x28;
 
-    // Get an array of the sections sorted so we place them in the proper order
-    // in the binary.
-    let mut sections_sort: Vec<(usize, usize)> = Vec::new();
-    for (i, section) in elf_file.sections.iter().enumerate() {
-        sections_sort.push((i, section.shdr.offset as usize));
-    }
-    sections_sort.sort_by_key(|s| s.1);
+    ////////////////////////////////////////////////////////////////////////////
+    // Determine the amount of RAM this app needs.
+    ////////////////////////////////////////////////////////////////////////////
 
+    // Set the size of the stack, either as specified by command line arguments,
+    // based on a section set by the linker, or if all else fails to a default
+    // value.
     let stack_len = stack_len
         // not provided, read from binary
         .or_else(|| {
@@ -117,6 +210,10 @@ pub fn elf_to_tbf(
     minimum_ram_size +=
         align_to(stack_len, 8) + align_to(app_heap_len, 4) + align_to(kernel_heap_len, 4);
 
+    ////////////////////////////////////////////////////////////////////////////
+    // Determine fixed addresses this app must be loaded at
+    ////////////////////////////////////////////////////////////////////////////
+
     // Check for fixed addresses.
     //
     // We do this with different mechanisms for flash and ram. For flash, we
@@ -150,87 +247,49 @@ pub fn elf_to_tbf(
     let mut fixed_address_ram: Option<u32> = None;
     let mut fixed_address_flash_pic: bool = false;
 
-    /// Helper function to determine if any nonzero length section is inside a
-    /// given segment.
-    ///
-    /// This is necessary because we sometimes run into loadable segments that
-    /// shouldn't really exist (they are at addresses outside of what was
-    /// specified in the linker script), and we want to be able to skip them.
-    fn section_exists_in_segment(
-        elf_file: &elf::File,
-        segment: &elf::types::ProgramHeader,
-    ) -> bool {
-        let segment_start = segment.offset as u32;
-        let segment_size = segment.filesz as u32;
-        let segment_end = segment_start + segment_size;
-
-        for section in elf_file.sections.iter() {
-            let section_start = section.shdr.offset as u32;
-            let section_size = section.shdr.size as u32;
-            let section_end = section_start + section_size;
-
-            if section_start >= segment_start && section_end <= segment_end && section_size > 0 {
-                return true;
-            }
-        }
-        false
-    }
-
     // Do flash address.
     for segment in &elf_file.phdrs {
-        match segment.progtype {
-            elf::types::PT_LOAD => {
-                // Look for segments based on their flags, size, and whether
-                // they actually contain any valid sections. Flash segments have
-                // to be marked executable, and we only care about segments that
-                // actually contain data to be loaded into flash.
-                if (segment.flags.0 & elf::types::PF_X.0) > 0
-                    && segment.filesz > 0
-                    && section_exists_in_segment(&elf_file, segment)
-                {
-                    // If this is standard Tock PIC, then this virtual address
-                    // will be at 0x80000000. Otherwise, we interpret this to
-                    // mean that the binary was compiled for a fixed address in
-                    // flash. Once we confirm this we do not need to keep
-                    // checking.
-                    if segment.vaddr == 0x80000000 || fixed_address_flash_pic {
-                        fixed_address_flash_pic = true;
-                    } else {
-                        // We need to see if this segment represents the lowest
-                        // address in flash that we are going to specify this
-                        // app needs to be loaded at. To do this we compare this
-                        // segment to any previous and keep track of the lowest
-                        // address. However, we need to use the address of the
-                        // first _section_ in the segment, not just the address
-                        // of the segment, because a linker may insert padding.
-                        let segment_start = Some(segment.paddr as u32);
+        // Only consider nonzero segments which are set to be loaded.
+        if segment.progtype != elf::types::PT_LOAD || segment.filesz == 0 {
+            continue;
+        }
 
-                        // I don't think this is necessary considering the first segment
-                        fixed_address_flash = match (fixed_address_flash, segment_start) {
-                            (Some(prev_addr), Some(segment_start)) => {
-                                if segment_start < prev_addr {
-                                    panic!("Segment address is below the previous segment address");
-                                }
+        // Flash segments have to be marked executable, and we only care about
+        // segments that actually contain data to be loaded into flash.
+        if (segment.flags.0 & elf::types::PF_X.0) > 0
+            && section_exists_in_segment(&elf_file, segment)
+        {
+            // If this is standard Tock PIC, then this virtual address will be
+            // at 0x80000000. Otherwise, we interpret this to mean that the
+            // binary was compiled for a fixed address in flash. Once we confirm
+            // this we do not need to keep checking.
+            if segment.vaddr == 0x80000000 || fixed_address_flash_pic {
+                fixed_address_flash_pic = true;
+            } else {
+                // We need to see if this segment represents the lowest address
+                // in flash that we are going to specify this app needs to be
+                // loaded at. To do this we compare this segment to any previous
+                // and keep track of the lowest address.
+                let segment_start = segment.paddr as u32;
 
-                                Some(prev_addr)
-                            }
-                            (None, Some(segment_start)) => {
-                                // We found our first valid segment and haven't set our
-                                // lowest address yet, so we do that now.
-                                Some(segment_start)
-                            }
-                            (prev_addr, None) => {
-                                // We can't use this segment, so skip.
-                                prev_addr
-                            }
-                        };
+                fixed_address_flash = match fixed_address_flash {
+                    Some(prev_addr) => {
+                        if segment_start < prev_addr {
+                            Some(segment_start)
+                        } else {
+                            Some(prev_addr)
+                        }
                     }
-                }
+                    None => {
+                        // We found our first valid segment and haven't set our
+                        // lowest address yet, so we do that now.
+                        Some(segment_start)
+                    }
+                };
             }
-
-            _ => {}
         }
     }
+
     // Use the flags to see if we got PIC sections, and clear any other fixed
     // addresses we may have found.
     if fixed_address_flash_pic {
@@ -258,26 +317,28 @@ pub fn elf_to_tbf(
         });
     });
 
-    // Need an array of sections to look for relocation data to include.
-    let mut rel_sections: Vec<String> = Vec::new();
+    ////////////////////////////////////////////////////////////////////////////
+    // Create the TBF header
+    ////////////////////////////////////////////////////////////////////////////
 
-    // Iterate the sections in the ELF file to find properties of the app that
-    // are required to go in the TBF header.
-    let mut writeable_flash_regions_count = 0;
-
-    for s in &sections_sort {
-        let section = &elf_file.sections[s.0];
-
-        // Count write only sections as writeable flash regions.
-        if section.shdr.name.contains(".wfr") && section.shdr.size > 0 {
-            writeable_flash_regions_count += 1;
+    // We need to reserve space for the writeable flash region information in
+    // the header, so we need to know how many writeable flash regions are in
+    // this app. Iterate the segments of the ELF file and then iterate sections
+    // within that segment to find sections with ".wfr" in the name.
+    let mut writeable_flash_regions_count: usize = 0;
+    for segment in &elf_file.phdrs {
+        // Only consider segments which are set to be loaded.
+        if segment.progtype != elf::types::PT_LOAD || segment.filesz == 0 {
+            continue;
         }
 
-        // Check write+alloc sections for possible .rel.X sections.
-        if section.shdr.flags.0 == elf::types::SHF_WRITE.0 + elf::types::SHF_ALLOC.0 {
-            // This section is also one we might need to include relocation
-            // data for.
-            rel_sections.push(section.shdr.name.clone());
+        // We only want nonzero sections within a segment.
+        for section in elf_file.sections.iter() {
+            if section.shdr.size > 0 && section_in_segment(&section.shdr, segment) {
+                if section.shdr.name.contains(".wfr") {
+                    writeable_flash_regions_count += 1;
+                }
+            }
         }
     }
     if verbose {
@@ -287,22 +348,20 @@ pub fn elf_to_tbf(
         );
     }
 
+    // Additional debug information.
     if verbose {
         if let Some((major, minor)) = kernel_version {
             println!("Kernel version: {}.{}", major, minor);
         }
     }
 
-    // Keep track of an index of where we are in creating the app binary.
-    let mut binary_index = 0;
-
     // Now we can create the first pass TBF header. This is mostly to get the
     // size of the header since we have to fill in some of the offsets later.
     let mut tbfheader = header::TbfHeader::new();
 
-    // Set the binary end offset here because it will cause a program
-    // header to be inserted. This ensures the length calculations for
-    // the binary will be correct.
+    // Set the binary end offset here because it will cause a program header to
+    // be inserted. This ensures the length calculations for the binary will be
+    // correct.
     tbfheader.set_binary_end_offset(0);
     tbfheader.set_app_version(app_version);
 
@@ -317,6 +376,11 @@ pub fn elf_to_tbf(
         kernel_version,
         disabled,
     );
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Adjust the protected region size to make fixed address work
+    ////////////////////////////////////////////////////////////////////////////
+
     // If a protected region size was passed, confirm the header will fit.
     // Otherwise, use the header size as the protected region size.
     let protected_region_size =
@@ -391,6 +455,22 @@ pub fn elf_to_tbf(
                 header_length as u32
             }
         };
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Create the actual binary to include in the TBF
+    ////////////////////////////////////////////////////////////////////////////
+
+    // Need a place to put the app sections before we know the true TBF header.
+    // This includes everything after the TBF header.
+    let mut binary: Vec<u8> = Vec::new();
+
+    // Keep track of an index from the beginning of the TBF binary of where we
+    // are in creating the TBF binary.
+    let mut binary_index = 0;
+
+    // Add in padding for the protected region size beyond the actual TBF header
+    // size and increment our index counter past the protected region.
+    binary.extend(vec![0; protected_region_size as usize - header_length]);
     binary_index += protected_region_size as usize;
 
     // The init function is where the app will start executing, defined as an
@@ -399,149 +479,189 @@ pub fn elf_to_tbf(
     // calculate the offset we need to find which section includes the entry
     // function and then determine its offset relative to the end of the
     // protected region.
-    let mut init_fn_offset: u32 = 0;
+    let mut init_fn_offset: Option<u32> = None;
 
-    // Need a place to put the app sections before we know the true TBF header.
-    let mut binary: Vec<u8> = vec![0; protected_region_size as usize - header_length];
-
-    let mut entry_point_found = false;
-
-    let mut last_segment_address_end: Option<usize> = None;
-
-    let mut start_address: u64 = 0;
-    let start_program_binary_index = binary_index;
-
-    // Iterate over ELF's Program Headers to assemble the binary image as a contiguous
-    // memory block. Only take into consideration segments where filesz is greater than 0
-    for segment in &elf_file.phdrs {
-        match segment.progtype {
-            elf::types::PT_LOAD => {
-                // Do not include segments with zero size, as these likely go in memory, not flash.
-                if segment.filesz > 0 {
-                    if last_segment_address_end.is_some() {
-                        // We have a previous segment. Now, check if there is any
-                        // padding between the segments in the .elf.
-                        let mut padding =
-                            segment.paddr as usize - last_segment_address_end.unwrap();
-                        let zero_buf = [0_u8; 1024];
-
-                        while padding > 0 {
-                            let chunk = if padding > 1024 { 1024 } else { padding };
-                            binary.extend(&zero_buf[..chunk]);
-                            binary_index += chunk;
-                            padding -= chunk;
-                        }
-                    } else {
-                        // This is the first segment, take the Physical Address as the starting
-                        // point to compute offsets from
-                        start_address = segment.paddr;
-                    }
-
-                    // read the ELF input file and append to the output binary
-                    input_file
-                        .seek(SeekFrom::Start(segment.offset))
-                        .expect("unable to seek input ELF file");
-
-                    let mut content: Vec<u8> = vec![0; (segment.filesz) as usize];
-                    input_file
-                        .read_exact(&mut content)
-                        .expect("failed to read segment data");
-                    binary.extend(content);
-
-                    // verify if this segment contains the entry point
-                    let start_segment = segment.paddr;
-                    let end_segment = segment.paddr + segment.filesz;
-
-                    if elf_file.ehdr.entry >= start_segment && elf_file.ehdr.entry < end_segment {
-                        if entry_point_found {
-                            // If the app is disabled just report a warning if we find
-                            // two entry points. OTBN apps will contain two entry
-                            // points, so this allows us to load them.
-                            if disabled {
-                                if verbose {
-                                    println!("Duplicate entry point in Program Segments");
-                                }
-                            } else {
-                                panic!("Duplicate entry point in Program Segments");
-                            }
-                        } else {
-                            init_fn_offset = (elf_file.ehdr.entry - start_address) as u32
-                                + (binary_index - header_length) as u32;
-                            entry_point_found = true;
-                        }
-                    }
-
-                    last_segment_address_end = Some(end_segment as usize);
-                    binary_index += segment.filesz as usize;
-                }
-            }
-            _ => {}
-        }
-    }
-
-    // iterate over sections to look for writable flash regions
-    for s in &sections_sort {
-        let section = &elf_file.sections[s.0];
-        if (section.shdr.flags.0
-            & (elf::types::SHF_WRITE.0 + elf::types::SHF_EXECINSTR.0 + elf::types::SHF_ALLOC.0)
-            != 0)
-            && section.shdr.shtype == elf::types::SHT_PROGBITS
-            && section.shdr.size > 0
-        {
-            // Check if this is a writeable flash region. If so, we need to
-            // set the offset and size in the header.
-            if section.shdr.name.contains(".wfr") && section.shdr.size > 0 {
-                let wfr_offset =
-                    section.shdr.addr - start_address + start_program_binary_index as u64;
-                tbfheader
-                    .set_writeable_flash_region_values(wfr_offset as u32, section.shdr.size as u32);
-            }
-        }
-    }
-
-    // Now that we have checked all of the sections, we can set the
-    // init_fn_offset.
-    tbfheader.set_init_fn_offset(init_fn_offset);
-
-    // Next we have to add in any relocation data.
+    // Need a place to put relocation data.
     let mut relocation_binary: Vec<u8> = Vec::new();
 
-    // For each section that might have relocation data, check if a .rel.X
-    // section exists and if so include it.
-    if verbose {
-        println!("Searching for .rel.X sections to add.");
-    }
-    for relocation_section_name in &rel_sections {
-        let mut name: String = ".rel".to_owned();
-        name.push_str(relocation_section_name);
+    // Keep track of the end address of the last segment (once we have a first
+    // segment). This allows us to insert padding between segments as necessary.
+    let mut last_segment_address_end: Option<usize> = None;
 
-        let rel_data = elf_file
-            .sections
-            .iter()
-            .find(|section| section.shdr.name == name)
-            .map_or(&[] as &[u8], |section| section.data.as_ref());
+    // Iterate over ELF's Program Headers to assemble the binary image as a
+    // contiguous memory block. Only take into consideration segments where
+    // filesz is greater than 0.
+    for segment in &elf_file.phdrs {
+        // Only consider segments which are set to be loaded.
+        if segment.progtype != elf::types::PT_LOAD {
+            continue;
+        }
 
-        relocation_binary.extend(rel_data);
+        // Do not include segments with zero size, as these likely go in memory,
+        // not flash.
+        if segment.filesz == 0 {
+            continue;
+        }
 
-        if verbose && !rel_data.is_empty() {
+        // Insert padding between segments if needed.
+        if last_segment_address_end.is_some() {
+            // We have a previous segment. Now, check if there is any padding
+            // between the segments in the .elf.
+            let padding = segment.paddr as usize - last_segment_address_end.unwrap();
+
+            if padding > 0 {
+                if verbose {
+                    println!("  Including padding between segments size={}", padding);
+                }
+
+                // Insert the padding into the generated binary.
+                binary.extend(vec![0; padding]);
+                binary_index += padding;
+            }
+        }
+
+        if verbose {
             println!(
-                "  Adding {0} section. Offset: {1} ({1:#x}). Length: {2} ({2:#x}) bytes.",
-                name,
-                binary_index + mem::size_of::<u32>() + rel_data.len(),
-                rel_data.len(),
+                "  Adding segment. Offset: {0} ({0:#x}). Length: {1} ({1:#x}) bytes.",
+                binary_index, segment.filesz
             );
         }
-        if !rel_data.is_empty() && amount_alignment_needed(binary_index as u32, 4) != 0 {
-            println!(
-                "Warning! Placing section {} at {:#x}, which is not 4-byte aligned.",
-                name, binary_index
-            );
+
+        // Read the segment from the ELF and append to the output binary.
+        let mut content: Vec<u8> = vec![0; (segment.filesz) as usize];
+        input_file
+            .seek(SeekFrom::Start(segment.offset))
+            .expect("unable to seek input ELF file");
+        input_file
+            .read_exact(&mut content)
+            .expect("failed to read segment data");
+
+        let start_segment = segment.paddr;
+        let end_segment = segment.paddr + segment.filesz;
+
+        // Check if this segment contains the entry point, and calculate the
+        // offset we need to store in the TBF header if so.
+        if elf_file.ehdr.entry >= start_segment && elf_file.ehdr.entry < end_segment {
+            if init_fn_offset.is_some() {
+                // If the app is disabled just report a warning if we find two
+                // entry points. OTBN apps will contain two entry points, so
+                // this allows us to load them.
+                if disabled {
+                    if verbose {
+                        println!("Duplicate entry point in Program Segments");
+                    }
+                } else {
+                    panic!("Duplicate entry point in Program Segments");
+                }
+            } else {
+                // Get the position of the entry point in the segment.
+                let entry_offset = (elf_file.ehdr.entry - start_segment) as usize;
+                // `init_fn_offset` is the offset from the end of the TBF header
+                // to the entry point within the application binary.
+                let tbf_entry_offset = (binary_index + entry_offset - header_length) as u32;
+                // Set the init_fn in the header.
+                tbfheader.set_init_fn_offset(tbf_entry_offset);
+                // Save it in case we find multiple entry points.
+                init_fn_offset = Some(tbf_entry_offset);
+            }
         }
+
+        // Iterate all sections that are in the segment we just loaded.
+        //
+        // We need two things:
+        // 1. To find all relevant relocation data we need to add.
+        // 2. To find if there are any writeable flash regions we need to set in
+        //    the TBF header.
+        for section in elf_file.sections.iter() {
+            // Skip zero size sections.
+            if section.shdr.size == 0 {
+                continue;
+            }
+
+            // Check if this section is within the segment.
+            if section_in_segment(&section.shdr, segment) {
+                // This section is in this segment.
+                if verbose {
+                    println!(
+                        "    Contains section {0}. Offset: {1} ({1:#x}). Length: {2} ({2:#x}) bytes.",
+                        section.shdr.name,
+                        binary_index + (section.shdr.offset - segment.offset) as usize,
+                        section.shdr.size
+                    );
+                }
+
+                // First, determine if we need to check for relocation data for
+                // this section. The section must be marked `SHF_WRITE`, as to
+                // use the relocations at runtime requires being able to update
+                // the contents of the section.
+                if section.shdr.flags.0 & elf::types::SHF_WRITE.0 > 0 {
+                    // Then check if there is a ".rel.<section name>" section
+                    // that we need to include in the relocation data.
+
+                    // relocation_section_name = ".rel" + section_name
+                    let mut relocation_section_name: String = ".rel".to_owned();
+                    relocation_section_name.push_str(&section.shdr.name);
+
+                    // Get the contents of the relocation data if it exists and
+                    // add that data to a buffer of relocation data.
+                    let rel_data = elf_file
+                        .sections
+                        .iter()
+                        .find(|section| section.shdr.name == relocation_section_name)
+                        .map_or(&[] as &[u8], |section| section.data.as_ref());
+                    relocation_binary.extend(rel_data);
+
+                    if verbose && !rel_data.is_empty() {
+                        println!(
+                            "      Including relocation data ({0}). Length: {1} ({1:#x}) bytes.",
+                            relocation_section_name,
+                            rel_data.len(),
+                        );
+                    }
+                }
+
+                // Second, check if this is a writeable flash region and if so,
+                // include its details in the TBF header.
+                if section.shdr.name.contains(".wfr") {
+                    // Calculate where this .wfr section is in the segment.
+                    let wfr_offset = (section.shdr.addr - segment.vaddr) as usize;
+                    // Calculate the position of the writeable flash region in
+                    // the TBF binary.
+                    let wfr_position = binary_index + wfr_offset;
+
+                    // Use these values to update the TBF header.
+                    tbfheader.set_writeable_flash_region_values(
+                        wfr_position as u32,
+                        section.shdr.size as u32,
+                    );
+                }
+            }
+        }
+
+        // Save the end of this segment so we can check if padding is required
+        // between segments.
+        last_segment_address_end = Some(end_segment as usize);
+
+        binary.extend(content);
+        binary_index += segment.filesz as usize;
     }
 
-    // Add the relocation data to our total length. Also include the
-    // 4 bytes for the relocation data length.
-    binary_index += relocation_binary.len() + mem::size_of::<u32>();
+    // Now that we know where the end of the section data is, we can check for
+    // alignment.
+    if !relocation_binary.is_empty() && amount_alignment_needed(binary_index as u32, 4) != 0 {
+        println!(
+            "Warning! Placing relocation data at {:#x}, which is not 4-byte aligned.",
+            binary_index
+        );
+    }
+
+    // Add 4 bytes for the relocation data length and the size of the relocation
+    // data to our total length.
+    binary_index += mem::size_of::<u32>() + relocation_binary.len();
+
+    ////////////////////////////////////////////////////////////////////////////
+    // Create the TBF footer
+    ////////////////////////////////////////////////////////////////////////////
 
     // Next up is the footer. Since we know where the footer starts, we can
     // record that now. Also insert app version number.
