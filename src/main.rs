@@ -73,7 +73,7 @@ fn main() {
     // Iterate all input elfs. Convert them to Tock friendly binaries and then
     // add them to the TAB file.
     for elf_file in opt.input {
-        let elffile = elf::File::open_path(&elf_file.path).expect("Could not open the .elf file.");
+        let mut fsfile = fs::File::open(&elf_file.path).expect("Could not open the .elf file.");
 
         // The TBF will be written to the same place as the ELF, with a .tbf
         // extension.
@@ -118,14 +118,6 @@ fn main() {
             .open(tbf_path.clone())
             .unwrap();
 
-        // Adding padding to the end of cortex-m apps. Check for a cortex-m app
-        // by inspecting the "machine" value in the elf header. 0x28 is ARM (see
-        // https://en.wikipedia.org/wiki/Executable_and_Linkable_Format#File_header
-        // for a list).
-        //
-        // RISC-V apps do not need to be sized to power of two.
-        let add_trailing_padding = elffile.ehdr.machine.0 == 0x28;
-
         // Do the conversion to a tock binary.
         if opt.verbose {
             println!("Creating {:?}", tbf_path);
@@ -135,7 +127,7 @@ fn main() {
         // it to a file.
         let mut output_vector = Vec::<u8>::new();
         convert::elf_to_tbf(
-            &elffile,
+            &mut fsfile,
             &mut output_vector,
             opt.package_name.clone(),
             opt.verbose,
@@ -146,7 +138,6 @@ fn main() {
             opt.permissions.to_vec(),
             (opt.write_id, opt.read_ids.clone(), opt.access_ids.clone()),
             minimum_tock_kernel_version,
-            add_trailing_padding,
             opt.disabled,
             opt.minimum_footer_size,
             opt.app_version,
