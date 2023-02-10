@@ -14,7 +14,7 @@ name = "elf2tab"
 path = "src/main.rs"
 
 [dependencies]
-chrono = "0.4.2"
+chrono = { version = "0.4.2", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.0.7", features = ["derive", "color", "wrap_help"] }
 tar = "0.4.36"
 elf = "0.0.10"
