@@ -754,8 +754,14 @@ pub fn elf_to_tbf(
         print!("{}", tbfheader);
     }
 
-    // Write the header and actual app to a binary file.
+    // Write the header to a binary file.
     output.write_all(tbfheader.generate().unwrap().get_ref())?;
+
+    // Adjust the relocation data due to the .ARM.exidx
+    let reldata_start: u32 = binary.len() as u32;
+    binary.as_mut_slice()[32..36].copy_from_slice(&reldata_start.to_le_bytes());
+
+    // Write the actual app to a binary file.
     output.write_all(binary.as_ref())?;
 
     let rel_data_len: [u8; 4] = (relocation_binary.len() as u32).to_le_bytes();
