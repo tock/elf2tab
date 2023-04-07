@@ -147,13 +147,13 @@ pub fn elf_to_tbf(
     // Load and parse ELF.
     let elf_file = elf::File::open_stream(input_file).expect("Could not open the .elf file.");
 
-    // Adding padding to the end of cortex-m apps. Check for a cortex-m app
-    // by inspecting the "machine" value in the elf header. 0x28 is ARM (see
-    // https://en.wikipedia.org/wiki/Executable_and_Linkable_Format#File_header
-    // for a list).
+    // Adding padding to the end of apps whose platforms require certail alignment.
+    // Check for a cortex-m and x86 apps by inspecting the "machine" value in the elf header.
+    // 0x28 is ARM and 0x3 is x86 
+    // (see https://en.wikipedia.org/wiki/Executable_and_Linkable_Format#File_header for a list).
     //
     // RISC-V apps do not need to be sized to power of two.
-    let trailing_padding = elf_file.ehdr.machine.0 == 0x28;
+    let trailing_padding = elf_file.ehdr.machine.0 == 0x28 || elf_file.ehdr.machine.0 == 0x3;
 
     ////////////////////////////////////////////////////////////////////////////
     // Determine the amount of RAM this app needs.
@@ -715,18 +715,29 @@ pub fn elf_to_tbf(
     }
 
     // Optionally calculate the additional padding needed to ensure the app size
-    // is a power of two. This will be largely covered with a footer
-    // reservation. The `post_content_pad` is any additional space that cannot
-    // be handled by reserved space in the footer.
+    // is a power of two (if ARM) or 4k aligned (if x86).
+    // This will be largely covered with a footer reservation. The `post_content_pad`
+    // is any additional space that cannot be handled by reserved space in the footer.
     let post_content_pad = if trailing_padding {
         // If trailing padding is requested, we need to pad the binary to a
         // power of 2 in size, and make sure it is at least 512 bytes in size.
-        let pad = if binary_index.count_ones() > 1 {
-            let power2len = cmp::max(1 << (32 - (binary_index as u32).leading_zeros()), 512);
-            power2len - binary_index
-        } else {
-            0
+        let pad = match elf_file.ehdr.machine.0 {
+            // ARM
+            0x28 => {
+                if binary_index.count_ones() > 1 {
+                    let power2len =
+                        cmp::max(1 << (32 - (binary_index as u32).leading_zeros()), 512);
+                    power2len - binary_index
+                } else {
+                    0
+                }
+            }
+            // x86
+            0x3 => (4096 - binary_index % 4096) % 4096,
+            // Unsupported
+            _ => 0,
         };
+
         // Increment to include the padding.
         binary_index += pad;
 
