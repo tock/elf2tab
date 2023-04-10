@@ -147,7 +147,7 @@ pub fn elf_to_tbf(
     // Load and parse ELF.
     let elf_file = elf::File::open_stream(input_file).expect("Could not open the .elf file.");
 
-    // Adding padding to the end of apps whose platforms require certail alignment.
+    // Adding padding to the end of apps whose platforms require certain alignment.
     // Check for a cortex-m and x86 apps by inspecting the "machine" value in the elf header.
     // 0x28 is ARM and 0x3 is x86 
     // (see https://en.wikipedia.org/wiki/Executable_and_Linkable_Format#File_header for a list).
@@ -719,10 +719,9 @@ pub fn elf_to_tbf(
     // This will be largely covered with a footer reservation. The `post_content_pad`
     // is any additional space that cannot be handled by reserved space in the footer.
     let post_content_pad = if trailing_padding {
-        // If trailing padding is requested, we need to pad the binary to a
-        // power of 2 in size, and make sure it is at least 512 bytes in size.
         let pad = match elf_file.ehdr.machine.0 {
             // ARM
+            // Pad binary to the next power of two, but not less than 512 bytes.
             0x28 => {
                 if binary_index.count_ones() > 1 {
                     let power2len =
@@ -733,6 +732,7 @@ pub fn elf_to_tbf(
                 }
             }
             // x86
+            // Pad binary to the next 4k boundary.
             0x3 => (4096 - binary_index % 4096) % 4096,
             // Unsupported
             _ => 0,
