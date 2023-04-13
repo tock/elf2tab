@@ -17,7 +17,7 @@ path = "src/main.rs"
 chrono = { version = "0.4.2", default-features = false, features = ["clock", "std"] }
 clap = { version = "4.0.7", features = ["derive", "color", "wrap_help"] }
 tar = "0.4.36"
-elf = "0.0.10"
+elf = "0.7.1"
 sha2 = "0.10.2"
 ring = "0.16.20"
 rsa-der = "0.3.0"
