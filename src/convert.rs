@@ -178,11 +178,28 @@ pub fn elf_to_tbf(
         .iter()
         .collect();
 
-    // Adding padding to the end of cortex-m apps. Check for a cortex-m app
-    // by inspecting the "machine" value in the elf header.
+    /// Specify how elf2tab should add trailing padding to the end of the TBF
+    /// file.
+    enum TrailingPadding {
+        /// Make sure the entire TBF is a power of 2 in size, so add any
+        /// necessary padding to make that happen.
+        TotalSizePowerOfTwo,
+        /// Make sure the entire TBF is a multiple of a specific value.
+        TotalSizeMultiple(usize),
+    }
+
+    // Add trailing padding for certain architectures.
     //
-    // RISC-V apps do not need to be sized to power of two.
-    let trailing_padding = elf_file.ehdr.e_machine == elf::abi::EM_ARM;
+    // - ARM: make sure the entire TBF is a power of 2 to make configuring the
+    //   MPU easy.
+    // - x86: use 4k padding to match page size.
+    //
+    // RISC-V apps do not need any additional padding.
+    let trailing_padding = match elf_file.ehdr.e_machine {
+        elf::abi::EM_ARM => Some(TrailingPadding::TotalSizePowerOfTwo),
+        elf::abi::EM_386 => Some(TrailingPadding::TotalSizeMultiple(4096)),
+        _ => None,
+    };
 
     ////////////////////////////////////////////////////////////////////////////
     // Determine the amount of RAM this app needs.
@@ -741,22 +758,35 @@ pub fn elf_to_tbf(
     }
 
     // Optionally calculate the additional padding needed to ensure the app size
-    // is a power of two. This will be largely covered with a footer
-    // reservation. The `post_content_pad` is any additional space that cannot
-    // be handled by reserved space in the footer.
-    let post_content_pad = if trailing_padding {
-        // If trailing padding is requested, we need to pad the binary to a
-        // power of 2 in size, and make sure it is at least 512 bytes in size.
-        let pad = if binary_index.count_ones() > 1 {
-            let power2len = cmp::max(1 << (32 - (binary_index as u32).leading_zeros()), 512);
-            power2len - binary_index
-        } else {
-            0
+    // meets the padding requirements.
+    //
+    // This will be largely covered with a footer reservation. The
+    // `post_content_pad` is any additional space that cannot be handled by
+    // reserved space in the footer.
+    let post_content_pad = trailing_padding.map_or(0, |padding_type| {
+        // Calculate how many additional bytes we need to add to meet length
+        // requirement.
+        let pad = match padding_type {
+            TrailingPadding::TotalSizePowerOfTwo => {
+                // Pad binary to the next power of two, but not less than 512
+                // bytes.
+                if binary_index.count_ones() > 1 {
+                    let power2len =
+                        cmp::max(1 << (32 - (binary_index as u32).leading_zeros()), 512);
+                    power2len - binary_index
+                } else {
+                    0
+                }
+            }
+            TrailingPadding::TotalSizeMultiple(multiple) => {
+                (multiple - (binary_index % multiple)) % multiple
+            }
         };
+
         // Increment to include the padding.
         binary_index += pad;
 
-        // If there is room for a TbfFooterCredentials we will use that
+        // If there is room for a TbfFooterCredentials we will use that.
         if pad
             >= (mem::size_of::<header::TbfHeaderTlv>()
                 + mem::size_of::<header::TbfFooterCredentialsType>())
@@ -766,10 +796,7 @@ pub fn elf_to_tbf(
             // Otherwise need to include the padding.
             pad
         }
-    } else {
-        // No padding.
-        0
-    };
+    });
 
     let total_size = binary_index;
 
