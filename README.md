@@ -148,12 +148,14 @@ It can be fixed for all TBFs in the TAB using the command line argument
 `--protected-region-size` (which takes as an argument entire size before the
 application binary, including the TBF header). However, a TAB can include both
 PIC apps and non-PIC apps, and setting the size for all TBFs isn't always
-desirable. Therefore, if `--protected-region-size` is not used, for apps
-compiled for fixed addresses (as determined above) elf2tab will estimate a
-protected region size that tries to ensure the start of the TBF headers _and_
-the application binary are placed at useful addresses in flash. elf2tab will try
-to increase the size of the protected region to make the start of the TBF header
-at an address aligned to 256 bytes when the application binary is at its correct
+desirable. Therefore, elf2tab further supports supplying the protected region
+size through a `tbf_protected_region_size` symbol in the input ELF files. If
+neither this symbol nor `--protected-region-size` are passed, for apps compiled
+for fixed addresses (as determined above) elf2tab will estimate a protected
+region size that tries to ensure the start of the TBF headers _and_ the
+application binary are placed at useful addresses in flash. elf2tab will try to
+increase the size of the protected region to make the start of the TBF header at
+an address aligned to 256 bytes when the application binary is at its correct
 fixed address.
 
 #### Syscall Permissions
