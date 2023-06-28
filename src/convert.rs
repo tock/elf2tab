@@ -423,52 +423,84 @@ pub fn elf_to_tbf(
     // Adjust the protected region size to make fixed address work
     ////////////////////////////////////////////////////////////////////////////
 
-    // If a protected region size was passed, confirm the header will fit.
-    // Otherwise, use the header size as the protected region size.
+    // Applications can hint a desired protected region size to elf2tab by
+    // defining a special `tbf_protected_region_size` symbol:
+    let protected_region_size_symbol =
+        if let Ok(Some((symtab, sym_strtab))) = elf_file.symbol_table() {
+            // We are looking for the `tbf_protected_region_size` symbol and its
+            // value. If it exists, we can use it as a hint for the protected
+            // region size.
+            symtab
+                .iter()
+                .find(|sym| {
+                    let name = sym_strtab
+                        .get(sym.st_name as usize)
+                        .expect("Failed to parse symbol name");
+                    name == "tbf_protected_region_size"
+                })
+                .map(|tbf_header_sym| tbf_header_sym.st_value as u32)
+        } else {
+            None
+        };
+
+    // Determine the protected region size by checking the following sources in
+    // this order:
+    //
+    // 1. Check for a `tbf_protected_region_size` symbol in the ELF file.
+    //
+    // 2. Use a fixed protected region size if one was passed through a command
+    //    line argument.
+    //
+    // 3. Set the protected region size to fit the TBF headers. For non-PIC
+    //    apps, align the start of the generated TBF file on a 256-byte
+    //    boundary, based on the binary's fixed flash address.
     let protected_region_size =
-        if let Some(fixed_protected_region_size) = protected_region_size_arg {
-            if fixed_protected_region_size < header_length as u32 {
-                // The header doesn't fit in the provided protected region size;
-                // throw an error.
-                return Err(io::Error::new(
-                    io::ErrorKind::InvalidInput,
-                    format!(
-                    "protected_region_size = {} is too small for the TBF headers. Header size: {}",
-                    fixed_protected_region_size, header_length),
-                ));
+        if let Some(fixed_protected_region_size) = protected_region_size_symbol {
+            // The protected region size was specified in the ELF file through
+            // the special `tbf_protected_region_size` symbol.
+            //
+            // If we have also been passed a fixed protected region size on the
+            // command line, warn that the ELF symbol will take precedence!
+            if protected_region_size_symbol.is_some() {
+                println!(
+                    "Overriding command-line specified protected_region_size \
+		 with tbf_protected_region_size symbol = {} bytes!",
+                    fixed_protected_region_size
+                );
             }
-            // Update the header's protected size, as the protected region may
-            // be larger than the header size.
-            tbfheader.set_protected_size(fixed_protected_region_size - header_length as u32);
 
             fixed_protected_region_size
+        } else if let Some(fixed_protected_region_size) = protected_region_size_arg {
+            // A desired protected region size was specified on the command line:
+            fixed_protected_region_size
         } else {
-            // The protected region was not specified on the command line.
-            // Normally, we default to an additional size of 0 for the protected
-            // region beyond the header. However, if we are _not_ doing PIC, we
-            // might want to choose a nonzero sized protected region. Without
-            // PIC, the application binary must be at specific address. In
-            // addition, boards have a fixed address where they start looking
-            // for applications. To make both of those addresses match, we can
-            // expand the protected region.
+            // The protected region was neither specified on the command line,
+            // nor as part of the ELF file. Normally, we default to an
+            // additional size of 0 for the protected region beyond the
+            // header. However, if we are _not_ doing PIC (as enforced in the
+            // check above), we might want to choose a nonzero sized protected
+            // region. Without PIC, the application binary must be at specific
+            // address. In addition, boards have a fixed address where they
+            // start looking for applications. To make both of those addresses
+            // match, we can expand the protected region.
             //
-            // |----------------------|-------------------|---------------------
-            // | TBF Header           | Protected Region  | Application Binary
-            // |----------------------|-------------------|---------------------
-            // ^                                ^         ^
-            // |                                |         |-- Fixed binary address
-            // |-- Start of apps address        |-- Flexible size
+            // /----- Protected Region ----------------\
+            // |------------|------------------------- |---------------------
+            // | TBF Header | Protected Region Trailer | Application Binary
+            // |------------|--------------------------|---------------------
+            // ^                           ^           ^
+            // |                           |           |-- Fixed binary address
+            // |-- Start of apps address   |-- Flexible size
             //
-            // However, we don't actually know the start of apps address.
-            // Additionally, an app may be positioned after another app in
-            // flash, and so the start address is actually the start of apps
-            // address plus the size of the first app. Tockloader when it goes
-            // to actually load the app can check for these addresses and expand
-            // the protected region as needed. But, in some cases it is easier
-            // to just be able to flash the TBF directly onto the board without
-            // needing Tockloader. So, we at least try to pick a reasonable
-            // protected size in the non-PIC case to give the TBF a chance of
-            // working as created.
+            //
+            // An app may be positioned after another app in flash, and so the
+            // start address is actually the start of apps address plus the size
+            // of the first app. Tockloader can check for these addresses and
+            // expand the protected region when it loads the app. But, in some
+            // cases it is easier to just be able to flash the TBF directly onto
+            // the board without needing Tockloader. So, we at least try to pick
+            // a reasonable protected size in the non-PIC case to give the TBF a
+            // chance of working as created.
             //
             // So, we put the start address of the TBF header at an alignment of
             // 256 if the application binary is at the expected address.
@@ -477,26 +509,38 @@ pub fn elf_to_tbf(
                 // start address to be at a 256 byte alignment.
                 let app_binary_address = fixed_address_flash.unwrap_or(0); // Already checked for `None`.
                 let tbf_start_address = util::align_down(app_binary_address, 256);
-                let protected_region_size = app_binary_address - tbf_start_address;
-                if protected_region_size > header_length as u32 {
-                    // We do want to set the protected size past the header to
-                    // something nonzero.
-                    if verbose {
-                        println!(
-                            "Inserting nonzero protected region of length: {} bytes",
-                            protected_region_size - header_length as u32
-                        );
-                    }
-                    tbfheader.set_protected_size(protected_region_size - header_length as u32);
-                    protected_region_size
-                } else {
-                    header_length as u32
-                }
+                app_binary_address - tbf_start_address
             } else {
                 // Normal PIC case, no need to insert extra protected region.
                 header_length as u32
             }
         };
+
+    // Validate that the protected region size at the very least fits our TBF
+    // headers:
+    if protected_region_size < header_length as u32 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            format!(
+                "protected_region_size = {} is too small for the TBF headers. Header size: {}",
+                protected_region_size, header_length
+            ),
+        ));
+    }
+
+    // Indicate an additional protected region size in the final TBF binary,
+    // such that Tock can set its memory protection accordingly:
+    if protected_region_size > header_length as u32 {
+        if verbose {
+            println!(
+                "Inserting nonzero protected region trailer of length: {} \
+		 bytes, protected region size: {} bytes.",
+                protected_region_size - header_length as u32,
+                protected_region_size,
+            );
+        }
+        tbfheader.set_protected_size(protected_region_size - header_length as u32);
+    }
 
     ////////////////////////////////////////////////////////////////////////////
     // Create the actual binary to include in the TBF
