@@ -399,7 +399,7 @@ impl TbfHeader {
             }
         }
 
-        if perms.len() > 0 {
+        if !perms.is_empty() {
             // base
             header_length += mem::size_of::<TbfHeaderTlv>();
             // length
@@ -479,7 +479,7 @@ impl TbfHeader {
             });
         }
 
-        if perms.len() > 0 {
+        if !perms.is_empty() {
             self.hdr_permissions = Some(TbfHeaderPermissions {
                 base: TbfHeaderTlv {
                     tipe: TbfHeaderTypes::Permissions,
@@ -591,7 +591,7 @@ impl TbfHeader {
             init_fn_offset: self.hdr_main.map_or(0, |main| main.init_fn_offset),
             protected_size: self.hdr_main.map_or(0, |main| main.protected_size),
             minimum_ram_size: self.hdr_main.map_or(0, |main| main.minimum_ram_size),
-            binary_end_offset: binary_end_offset,
+            binary_end_offset,
             app_version: 0,
         });
     }

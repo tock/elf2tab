@@ -28,6 +28,11 @@ pub fn do_pad<W: io::Write>(output: &mut W, length: usize) -> io::Result<()> {
     Ok(())
 }
 
+/// Get a raw buffer for the memory of type `T`.
+///
+/// # Safety
+///
+/// This must only be used to write the object to the output file.
 pub unsafe fn as_byte_slice<T: Copy>(input: &T) -> &[u8] {
     slice::from_raw_parts(input as *const T as *const u8, mem::size_of::<T>())
 }
