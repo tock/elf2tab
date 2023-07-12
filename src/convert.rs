@@ -1016,12 +1016,11 @@ pub fn elf_to_tbf(
                 panic!("Could not generate RSA4096 signature: {:?}", e);
             });
         let mut credentials = vec![0; 1024];
-        for i in 0..key_pair.public_modulus_len() {
-            credentials[i] = public_modulus[i];
-        }
-        for i in 0..signature.len() {
+        credentials[..key_pair.public_modulus_len()]
+            .copy_from_slice(&public_modulus[..key_pair.public_modulus_len()]);
+        for (i, sig) in signature.iter().enumerate() {
             let index = i + key_pair.public_modulus_len();
-            credentials[index] = signature[i];
+            credentials[index] = *sig;
         }
 
         let rsa4096_credentials = header::TbfFooterCredentials {
@@ -1063,7 +1062,7 @@ pub fn elf_to_tbf(
     }
 
     // Pad to get a power of 2 sized flash app, if requested.
-    util::do_pad(output, post_content_pad as usize)?;
+    util::do_pad(output, post_content_pad)?;
 
     Ok(())
 }
