@@ -557,6 +557,14 @@ pub fn elf_to_tbf(
                         println!("  Including padding between segments size={}", padding);
                     }
 
+                    if padding >= 4096 {
+                        // Warn the user that we're inserting a large amount of
+                        // padding (>= 4096, which is the ELF file segment padding)
+                        // into the binary. This can be a sign of an incorrect /
+                        // broken ELF file (where not all LOADed non-zero sized
+                        // sections are marked to be loaded from flash).
+                        println!("  Warning! Inserting a large amount of padding.");
+                    }
 
                     // Insert the padding into the generated binary.
                     binary.extend(vec![0; padding]);
