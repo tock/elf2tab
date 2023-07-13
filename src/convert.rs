@@ -549,16 +549,24 @@ pub fn elf_to_tbf(
         if let Some(last_segment_address_end) = last_segment_address_end {
             // We have a previous segment. Now, check if there is any padding
             // between the segments in the .elf.
-            let padding = segment.p_paddr as usize - last_segment_address_end;
+            let chk_padding = (segment.p_paddr as usize).checked_sub(last_segment_address_end);
 
-            if padding > 0 {
-                if verbose {
-                    println!("  Including padding between segments size={}", padding);
+            if let Some(padding) = chk_padding {
+                if padding > 0 {
+                    if verbose {
+                        println!("  Including padding between segments size={}", padding);
+                    }
+
+
+                    // Insert the padding into the generated binary.
+                    binary.extend(vec![0; padding]);
+                    binary_index += padding;
                 }
-
-                // Insert the padding into the generated binary.
-                binary.extend(vec![0; padding]);
-                binary_index += padding;
+            } else {
+                println!(
+                    "  Warning! Expecting ELF sections to be in physical (load) address order."
+                );
+                println!("           Not inserting padding, the resulting TBF may be broken.");
             }
         }
 
