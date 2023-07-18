@@ -176,7 +176,8 @@ nonvolatile data from userspace. You can specify a single write_id used
 to store new data and multiple read_ids and access_ids used to enforce
 read/write permissions on existing data.
 
-An example looks like this
+An example looks like this:
+
     $ elf2tab  --write_id 12345678 --read_ids 1 2 --access_ids 2 3 ...
 
 ### Creating the TAB file
