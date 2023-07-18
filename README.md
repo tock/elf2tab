@@ -10,42 +10,38 @@ Usage
 -----
 
 ```
-USAGE:
-    elf2tab [FLAGS] [OPTIONS] ELF[,ARCHITECTURE]...
-Converts Tock userspace programs from .elf files to Tock Application Bundles.
+Usage: elf2tab [OPTIONS] <elf[,architecture]>...
 
-FLAGS:
-        --deterministic    Produce a deterministic TAB file
-        --disable          Mark the app as disabled in the TBF flags
-    -h, --help             Prints help information
-        --sha256           Add a SHA256 hash credential to each TAB
-        --sha384           Add a SHA384 hash credential to each TAB
-        --sha512           Add a SHA512 hash credential to each TAB
-    -V, --version          Prints version information
-    -v, --verbose          Be verbose
+Arguments:
+  <elf[,architecture]>...  application file(s) to package
 
-OPTIONS:
-        --access_ids <access_ids>...                       Storage IDs that this app is allowed to write
-        --app-version <app-version>                        Set the version number [default: 0]
-    -o, --output-file <filename>                           output file name [default: TockApp.tab]
-        --app-heap <heap-size>                             in bytes [default: 1024]
-        --kernel-heap <kernel-heap-size>                   in bytes [default: 1024]
-        --kernel-major <kernel-major-version>              The kernel version that the app requires
-        --kernel-minor <kernel-minor-version>              The minimum kernel minor version that the app requires
-        --minimum-ram-size <min-ram-size>                  in bytes
-        --minimum-footer-size <min-footer-size>            Minimum number of bytes to reserve space for in the footer [default: 0]
-        --permissions <permissions>...                     A list of driver numbers and allowed commands
-    -n, --package-name <pkg-name>                          package name
-        --protected-region-size <protected-region-size>    Size of the protected region (including headers)
-        --read_ids <read_ids>...                           Storage IDs that this app is allowed to read
-        --rsa4096-private <rsa4096-private-key>            Add an 4096-bit RSA signature credential using this private key
-        --rsa4096-public <rsa4096-public-key>              Add an 4096-bit RSA signature credential containing this public key
-        --stack <stack-size>                               in bytes
-        --write_id <write_id>                              A storage ID used for writing data
-        --supported-boards <supported-boards>              Comma separated list of boards this app is compatible with
-
-ARGS:
-    <elf[,architecture]>...    application file(s) to package
+Options:
+  -v, --verbose                                        Be verbose
+      --deterministic                                  Produce a deterministic TAB file
+      --disable                                        Mark the app as disabled in the TBF flags
+      --app-version <APP_VERSION>                      Set the version number [default: 0]
+      --minimum-ram-size <min-ram-size>                in bytes
+  -o, --output-file <filename>                         output file name [default: TockApp.tab]
+  -n, --package-name <pkg-name>                        package name
+      --stack <stack-size>                             in bytes
+      --app-heap <heap-size>                           in bytes [default: 1024]
+      --kernel-heap <kernel-heap-size>                 in bytes [default: 1024]
+      --protected-region-size <protected-region-size>  Size of the protected region (including headers)
+      --permissions <permissions>...                   A list of driver numbers and allowed commands
+      --write_id <write_id>                            A storage ID used for writing data
+      --read_ids <read_ids>...                         Storage IDs that this app is allowed to read
+      --access_ids <access_ids>...                     Storage IDs that this app is allowed to write
+      --kernel-major <kernel-major-version>            The kernel version that the app requires
+      --kernel-minor <kernel-minor-version>            The minimum kernel minor version that the app requires
+      --supported-boards <supported-boards>            comma separated list of boards this app is compatible with
+      --minimum-footer-size <min-footer-size>          Minimum number of bytes to reserve space for in the footer [default: 0]
+      --sha256                                         Add a SHA256 hash credential to each TBF
+      --sha384                                         Add a SHA384 hash credential to each TBF
+      --sha512                                         Add a SHA512 hash credential to each TBF
+      --rsa4096-private <rsa4096-private-key>          Add an 4096-bit RSA signature credential using this private key
+      --rsa4096-public <rsa4096-public-key>            Add an 4096-bit RSA signature credential containing this public key
+  -h, --help                                           Print help
+  -V, --version                                        Print version
 ```
 
 For example, converting a "blink" app from a compiled .elf file (for a Cortex-M4
