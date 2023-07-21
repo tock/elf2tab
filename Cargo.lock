@@ -214,7 +214,7 @@ checksum = "e2b183d6ce6ca4cf30e3db37abf5b52568b5f9015c97d9fbdd7026aa5dcdd758"
 
 [[package]]
 name = "elf2tab"
-version = "0.11.0"
+version = "0.12.0-dev"
 dependencies = [
  "chrono",
  "clap",
