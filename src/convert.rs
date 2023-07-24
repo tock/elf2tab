@@ -159,6 +159,7 @@ pub fn elf_to_tbf(
         }
     };
 
+    // Parse the elf file to retrieve all of the defined sections.
     let elf_sections: Vec<(String, elf::section::SectionHeader)> = shdr_tab
         .iter()
         .map(|shdr| {
@@ -172,11 +173,91 @@ pub fn elf_to_tbf(
         })
         .collect();
 
-    let elf_phdrs: Vec<elf::segment::ProgramHeader> = elf_file
+    // Parse the elf file to retrieve all of the defined segments.
+    let mut elf_phdrs: Vec<elf::segment::ProgramHeader> = elf_file
         .segments()
         .expect("Failed to locate ELF program headers")
         .iter()
         .collect();
+
+    // Before moving on, we have to verify that the linker made a suitable elf
+    // file for our use, or modify the segments if not.
+    //
+    // Because elf2tab is creating a binary TBF, and not using the elf format
+    // directly, we have a requirement for the elf files that is necessary so we
+    // can create the expected TBF. The requirement is that all required content
+    // in the elf MUST be contained in sections. That is, elf2tab cannot support
+    // tock apps where required data is within segments but not sections. The
+    // reason for this is that the linker is able to re-use segments to include
+    // other data (most notably the ELF's own header) to make a more compact
+    // structure to load when executing the program. However, this violates
+    // assumptions we are making in our linker files that content will only
+    // exist within sections (and at the addresses those sections are at).
+    //
+    // This mismatch between the expectations of our linker files and what the
+    // linker does became an issue with very small (~8 byte .text section)
+    // fixed-address elf files. The linker realized it could put its own header,
+    // and all required in-flash sections within the same segment (offset 0x0)
+    // to allow a traditional elf load to need to map just one 4K page. This
+    // breaks elf2tab, because now the segment includes more than just defined
+    // sections, and fixed address calculation breaks. Example:
+    //
+    // Segment 0, offset 0x0, physaddr: 0x20040000
+    // |------------|--------------|---------------------
+    // | ELF Header | .crt0_header | .text
+    // |------------|--------------|---------------------
+    //
+    // Since the segment starts at address 0x20040000, we assume the start of
+    // the app binary must be at 0x20040000, and there is no room for the TBF
+    // header.
+    //
+    // To fix this, we need to enforce that segments start with a section. We
+    // enforce this by modifying the segments to start where the first contained
+    // section does, and not before.
+    for segment in &mut elf_phdrs {
+        // Only consider nonzero segments which are set to be loaded.
+        if segment.p_type != elf::abi::PT_LOAD || segment.p_filesz == 0 {
+            continue;
+        }
+
+        // Flash segments have to be marked executable, and we only care about
+        // segments that actually contain data to be loaded into flash.
+        if (segment.p_flags & elf::abi::PF_X) > 0
+            && section_exists_in_segment(&elf_sections, segment)
+        {
+            let mut lowest_virtaddr = u64::MAX;
+
+            // Iterate all sections, and find the lowest address section within
+            // that segment.
+            for (_, shdr) in elf_sections.iter() {
+                if shdr.sh_size > 0 && section_in_segment(shdr, segment) {
+                    if shdr.sh_addr < lowest_virtaddr {
+                        lowest_virtaddr = shdr.sh_addr;
+                    }
+                }
+            }
+
+            if lowest_virtaddr != segment.p_vaddr {
+                // The start of sections does not match the start of the
+                // segment. We need to shrink this segment to preserve the
+                // assumption that the segment is comprised of sections.
+                let shrink_size = lowest_virtaddr - segment.p_vaddr;
+
+                if verbose {
+                    println!(
+                        "Shrinking segment at offset {:#02x} by {} bytes.",
+                        segment.p_offset, shrink_size
+                    );
+                }
+
+                segment.p_offset += shrink_size;
+                segment.p_paddr += shrink_size;
+                segment.p_vaddr += shrink_size;
+                segment.p_filesz -= shrink_size;
+                segment.p_memsz -= shrink_size;
+            }
+        }
+    }
 
     /// Specify how elf2tab should add trailing padding to the end of the TBF
     /// file.
