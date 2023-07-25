@@ -172,7 +172,7 @@ pub fn elf_to_tbf(
         })
         .collect();
 
-    let elf_phdrs: Vec<elf::segment::ProgramHeader> = elf_file
+    let mut elf_phdrs: Vec<elf::segment::ProgramHeader> = elf_file
         .segments()
         .expect("Failed to locate ELF program headers")
         .iter()
@@ -262,25 +262,42 @@ pub fn elf_to_tbf(
 
     // Check for fixed addresses.
     //
-    // We do this with different mechanisms for flash and ram. For flash, we
-    // look at loadable segments in the ELF, and find the segment with the
-    // lowest address that is both executable and non-zero in file size. Since
-    // this is a segment that must be loaded to execute the application, we know
-    // that this must be a flash address.
+    // For the most reliable results, we expect that the linker script for the
+    // app created two symbols which we can use to determine where the app
+    // expects to be placed in flash and ram.
     //
-    // For RAM, we can't quite use the ELF file in the same way as with flash.
-    // Since nothing _actually_ has to be loaded into RAM, the ELF file does not
-    // have to keep track of the first address in RAM. Further, Tock apps
-    // typically put a .stack section at the beginning of RAM, and the stack is
-    // just a memory holder and doesn't contain any actual data. The start of
-    // RAM address will almost certainly exist somewhere in the ELF, but
-    // reliably extracting it from different ELFs linked with different
-    // toolchains from different linker scripts would I think require resorting
-    // to a bit of heuristics and guessing. To avoid the potential issues there,
-    // we instead require that a `_sram_origin` symbol be present to explicitly
-    // mark the start of RAM.
+    // - `_flash_origin`: The address in flash the app was compiled for.
+    // - `_sram_origin`: The address in ram the app was compiled for.
     //
-    // In both cases we check to see if the address matches our expected PIC
+    // For RAM, we use this method because there does not seem to be a reliable
+    // method to extract the RAM start address from the elf. Since nothing
+    // _actually_ has to be loaded into RAM, the ELF file does not have to keep
+    // track of the first address in RAM. Further, Tock apps typically put a
+    // .stack section at the beginning of RAM, and the stack is just a memory
+    // holder and doesn't contain any actual data. The start of RAM address will
+    // almost certainly exist somewhere in the ELF, but reliably extracting it
+    // from different ELFs linked with different toolchains from different
+    // linker scripts would I think require resorting to a bit of heuristics and
+    // guessing. To avoid the potential issues there, we instead require that a
+    // `_sram_origin` symbol be present to explicitly mark the start of RAM.
+    //
+    // For flash, we use the `_flash_origin` symbol if the linker script
+    // includes it. In theory, we can deduce the start address of flash based on
+    // the physaddr of segments. However, in some cases the linker appears to
+    // place segments _before_ the start of flash. Note, it always seems to
+    // place _sections_ within the specified flash region, but, at this point,
+    // it is increasing untenable to reliably detect the start address of flash
+    // based on segments and sections alone. To essentially sidestep this issue,
+    // we default to passing the flash start address via the `_flash_origin`
+    // symbol.
+    //
+    // If the elf doesn't include the `_flash_origin` symbol, we look at
+    // loadable segments in the ELF, and find the segment with the lowest
+    // address that is both executable and non-zero in file size. Since this is
+    // a segment that must be loaded to execute the application, we assume this
+    // is the start address of flash.
+    //
+    // In both case we check to see if the address matches our expected PIC
     // addresses:
     // - RAM: 0x00000000
     // - flash: 0x80000000
@@ -294,44 +311,71 @@ pub fn elf_to_tbf(
     let mut fixed_address_flash_pic: bool = false;
 
     // Do flash address.
-    for segment in &elf_phdrs {
-        // Only consider nonzero segments which are set to be loaded.
-        if segment.p_type != elf::abi::PT_LOAD || segment.p_filesz == 0 {
-            continue;
+
+    // Try to get the flash address via the `_flash_origin` symbol.
+    let flash_origin_address = if let Ok(Some((symtab, sym_strtab))) = elf_file.symbol_table() {
+        // We are looking for the `_flash_origin` symbol and its value. If it
+        // exists, this tells us the first address of flash when the app was
+        // compiled.
+        if let Some(flash_origin) = symtab.iter().find(|sym| {
+            let name = sym_strtab
+                .get(sym.st_name as usize)
+                .expect("Failed to parse symbol name");
+            name == "_flash_origin"
+        }) {
+            Some(flash_origin.st_value as u32)
+        } else {
+            None
         }
+    } else {
+        None
+    };
 
-        // Flash segments have to be marked executable, and we only care about
-        // segments that actually contain data to be loaded into flash.
-        if (segment.p_flags & elf::abi::PF_X) > 0
-            && section_exists_in_segment(&elf_sections, segment)
-        {
-            // If this is standard Tock PIC, then this virtual address will be
-            // at 0x80000000. Otherwise, we interpret this to mean that the
-            // binary was compiled for a fixed address in flash. Once we confirm
-            // this we do not need to keep checking.
-            if segment.p_vaddr == 0x80000000 || fixed_address_flash_pic {
-                fixed_address_flash_pic = true;
-            } else {
-                // We need to see if this segment represents the lowest address
-                // in flash that we are going to specify this app needs to be
-                // loaded at. To do this we compare this segment to any previous
-                // and keep track of the lowest address.
-                let segment_start = segment.p_paddr as u32;
+    // Figure out if this is a PIC app or not, and if we couldn't find the
+    // symbol then we estimate the address from segments.
+    if let Some(flash_origin) = flash_origin_address {
+        if flash_origin == 0x80000000 {
+            // Matches the PIC address.
+            fixed_address_flash_pic = true;
+        } else {
+            // We are a fixed address app, so we just use the given address.
+            fixed_address_flash = Some(flash_origin)
+        }
+    } else {
+        // We didn't find the symbol, so estimate from the segments.
+        for segment in &elf_phdrs {
+            // Only consider nonzero segments which are set to be loaded.
+            if segment.p_type != elf::abi::PT_LOAD || segment.p_filesz == 0 {
+                continue;
+            }
 
-                fixed_address_flash = match fixed_address_flash {
-                    Some(prev_addr) => {
-                        if segment_start < prev_addr {
+            // Flash segments have to be marked executable, and we only care about
+            // segments that actually contain data to be loaded into flash.
+            if (segment.p_flags & elf::abi::PF_X) > 0
+                && section_exists_in_segment(&elf_sections, segment)
+            {
+                // If this is standard Tock PIC, then this virtual address will be
+                // at 0x80000000. Otherwise, we interpret this to mean that the
+                // binary was compiled for a fixed address in flash. Once we confirm
+                // this we do not need to keep checking.
+                if segment.p_vaddr == 0x80000000 || fixed_address_flash_pic {
+                    fixed_address_flash_pic = true;
+                } else {
+                    // We need to see if this segment represents the lowest
+                    // address in flash that we are going to specify this app
+                    // needs to be loaded at. To do this we compare this segment
+                    // to any previous and keep track of the lowest address.
+                    let segment_start = segment.p_paddr as u32;
+
+                    fixed_address_flash = match fixed_address_flash {
+                        Some(prev_addr) => Some(cmp::min(segment_start, prev_addr)),
+                        None => {
+                            // We found our first valid segment and haven't set
+                            // our lowest address yet, so we do that now.
                             Some(segment_start)
-                        } else {
-                            Some(prev_addr)
                         }
-                    }
-                    None => {
-                        // We found our first valid segment and haven't set our
-                        // lowest address yet, so we do that now.
-                        Some(segment_start)
-                    }
-                };
+                    };
+                }
             }
         }
     }
@@ -577,7 +621,7 @@ pub fn elf_to_tbf(
     // Iterate over ELF's Program Headers to assemble the binary image as a
     // contiguous memory block. Only take into consideration segments where
     // filesz is greater than 0.
-    for segment in &elf_phdrs {
+    for segment in &mut elf_phdrs {
         // Only consider segments which are set to be loaded.
         if segment.p_type != elf::abi::PT_LOAD {
             continue;
@@ -587,6 +631,23 @@ pub fn elf_to_tbf(
         // not flash.
         if segment.p_filesz == 0 {
             continue;
+        }
+
+        // It's possible the linker started this segment _before_ the start of
+        // the flash region. We edit the segment to remove the portion that
+        // starts before the start of flash.
+        if let Some(flash_address) = fixed_address_flash {
+            let flash_address: u64 = flash_address as u64;
+            if segment.p_paddr < flash_address {
+                // We need to truncate the start of the segment.
+                let truncate_length = flash_address - segment.p_paddr;
+
+                segment.p_offset += truncate_length;
+                segment.p_paddr += truncate_length;
+                segment.p_vaddr += truncate_length;
+                segment.p_filesz -= truncate_length;
+                segment.p_memsz -= truncate_length;
+            }
         }
 
         // Insert padding between segments if needed.
