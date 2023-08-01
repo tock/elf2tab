@@ -633,6 +633,15 @@ pub fn elf_to_tbf(
             continue;
         }
 
+        // Check if the segment starts entirely before the start of flash. If
+        // so, skip this segment.
+        if let Some(flash_address) = fixed_address_flash {
+            let flash_address: u64 = flash_address as u64;
+            if segment.p_paddr + segment.p_filesz < flash_address {
+                continue;
+            }
+        }
+
         // It's possible the linker started this segment _before_ the start of
         // the flash region. We edit the segment to remove the portion that
         // starts before the start of flash.
