@@ -461,7 +461,7 @@ pub fn elf_to_tbf(
             //
             // If we have also been passed a fixed protected region size on the
             // command line, warn that the ELF symbol will take precedence!
-            if protected_region_size_symbol.is_some() {
+            if protected_region_size_arg.is_some() {
                 println!(
                     "Overriding command-line specified protected_region_size \
 		 with tbf_protected_region_size symbol = {} bytes!",
