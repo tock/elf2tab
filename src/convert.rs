@@ -3,7 +3,6 @@
 use crate::header;
 use crate::util::{self, align_to, amount_alignment_needed};
 use ring::{rand, signature};
-use rsa_der;
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use std::cmp;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -972,8 +971,6 @@ pub fn elf_to_tbf(
 
         let private_buf = rsa4096_private_key.unwrap();
         let private_key_path = Path::new(&private_buf);
-        let public_buf = rsa4096_public_key.unwrap();
-        let public_key_path = Path::new(&public_buf);
 
         let private_key_der = read_rsa_file(private_key_path)
             .map_err(|e| {
@@ -984,31 +981,15 @@ pub fn elf_to_tbf(
             })
             .unwrap();
 
-        let public_key_der = read_rsa_file(public_key_path)
-            .map_err(|e| {
-                panic!(
-                    "Failed to read public key from {:?}: {:?}",
-                    public_key_path, e
-                );
-            })
-            .unwrap();
-
-        let key_pair = signature::RsaKeyPair::from_der(&private_key_der)
+        let key_pair = ring::rsa::KeyPair::from_pkcs8(&private_key_der)
             .map_err(|e| {
                 panic!("RSA4096 could not be parsed: {:?}", e);
             })
             .unwrap();
 
-        let public_key = rsa_der::public_key_from_der(&public_key_der);
+        let public_key: ring::rsa::PublicKeyComponents<Vec<u8>> = key_pair.public().into();
 
-        let public_modulus = match public_key {
-            Ok((n, _)) => n,
-            Err(_) => {
-                panic!("RSA4096 signature requested but provided public key could not be parsed.");
-            }
-        };
-
-        if key_pair.public_modulus_len() != 512 {
+        if key_pair.public().modulus_len() != 512 {
             // A 4096-bit key should have a 512-byte modulus
             panic!(
                 "RSA4096 signature requested but key {:?} is not 4096 bits, it is {} bits",
@@ -1017,7 +998,7 @@ pub fn elf_to_tbf(
             );
         }
         let rng = rand::SystemRandom::new();
-        let mut signature = vec![0; key_pair.public_modulus_len()];
+        let mut signature = vec![0; key_pair.public().modulus_len()];
         let _res = key_pair
             .sign(
                 &signature::RSA_PKCS1_SHA512,
@@ -1029,10 +1010,10 @@ pub fn elf_to_tbf(
                 panic!("Could not generate RSA4096 signature: {:?}", e);
             });
         let mut credentials = vec![0; 1024];
-        credentials[..key_pair.public_modulus_len()]
-            .copy_from_slice(&public_modulus[..key_pair.public_modulus_len()]);
+        credentials[..key_pair.public().modulus_len()]
+            .copy_from_slice(&public_key.n[0..key_pair.public().modulus_len()]);
         for (i, sig) in signature.iter().enumerate() {
-            let index = i + key_pair.public_modulus_len();
+            let index = i + key_pair.public().modulus_len();
             credentials[index] = *sig;
         }
 

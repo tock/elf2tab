@@ -73,16 +73,16 @@ elf2tab can also sign the TBF with a public/private RSA key pair. To generate
 compatible keys:
 
     $ openssl genrsa -aes256 -out tockkey.private.pem 4096
-    $ openssl rsa -in tockkey.private.pem -outform der -out tockkey.private.der
+    $ openssl pkcs8 -topk8 -nocrypt -outform der -in tockkey.private.pem -out tockkey.private.pk8
     $ openssl rsa -in tockkey.private.pem -outform der -pubout -out tockkey.public.der
 
 Then pass the keys to elf2tab:
 
-    $ elf2tab --rsa4096-private tockkey.private.der --rsa4096-public tockkey.public.der ...
+    $ elf2tab --rsa4096-private tockkey.private.pk8 --rsa4096-public tockkey.public.der ...
 
 Example including multiple credentials:
 
-    $ elf2tab --sha256 --sha384 --sha512 --rsa4096-private tockkey.private.der --rsa4096-public tockkey.public.der ...
+    $ elf2tab --sha256 --sha384 --sha512 --rsa4096-private tockkey.private.pk8 --rsa4096-public tockkey.public.der ...
 
 
 elf2tab Details
