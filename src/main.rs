@@ -145,7 +145,6 @@ fn main() {
             opt.sha384_enable,
             opt.sha512_enable,
             opt.rsa4096_private_key.clone(),
-            opt.rsa4096_public_key.clone(),
         )
         .unwrap();
         if opt.verbose {

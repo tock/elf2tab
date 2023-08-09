@@ -211,13 +211,6 @@ pub struct Opt {
         help = "Add an 4096-bit RSA signature credential using this private key"
     )]
     pub rsa4096_private_key: Option<PathBuf>,
-
-    #[arg(
-        long = "rsa4096-public",
-        id = "rsa4096-public-key",
-        help = "Add an 4096-bit RSA signature credential containing this public key"
-    )]
-    pub rsa4096_public_key: Option<PathBuf>,
 }
 
 mod test {

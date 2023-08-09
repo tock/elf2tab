@@ -141,7 +141,6 @@ pub fn elf_to_tbf(
     sha384: bool,
     sha512: bool,
     rsa4096_private_key: Option<PathBuf>,
-    rsa4096_public_key: Option<PathBuf>,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -958,12 +957,7 @@ pub fn elf_to_tbf(
         }
     }
 
-    if rsa4096_private_key.is_some() && rsa4096_public_key.is_none() {
-        panic!("RSA4096 private key provided but no corresponding public key provided.");
-    }
-    if rsa4096_private_key.is_none() && rsa4096_public_key.is_some() {
-        panic!("RSA4096 public key provided but no corresponding private key provided.");
-    } else if rsa4096_private_key.is_some() && rsa4096_private_key.is_some() {
+    if rsa4096_private_key.is_some() {
         let rsa4096_len = mem::size_of::<header::TbfHeaderTlv>()
             + mem::size_of::<header::TbfFooterCredentialsType>()
             + 1024; // Signature + key is 1024 bytes long
