@@ -2,8 +2,8 @@
 
 use crate::header;
 use crate::util::{self, align_to, amount_alignment_needed};
+use ring::signature::KeyPair;
 use ring::{rand, signature};
-use rsa_der;
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use std::cmp;
 use std::io::{Read, Seek, SeekFrom, Write};
@@ -141,7 +141,6 @@ pub fn elf_to_tbf(
     sha384: bool,
     sha512: bool,
     rsa4096_private_key: Option<PathBuf>,
-    rsa4096_public_key: Option<PathBuf>,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -958,62 +957,47 @@ pub fn elf_to_tbf(
         }
     }
 
-    if rsa4096_private_key.is_some() && rsa4096_public_key.is_none() {
-        panic!("RSA4096 private key provided but no corresponding public key provided.");
-    }
-    if rsa4096_private_key.is_none() && rsa4096_public_key.is_some() {
-        panic!("RSA4096 public key provided but no corresponding private key provided.");
-    } else if rsa4096_private_key.is_some() && rsa4096_private_key.is_some() {
+    if rsa4096_private_key.is_some() {
         let rsa4096_len = mem::size_of::<header::TbfHeaderTlv>()
             + mem::size_of::<header::TbfFooterCredentialsType>()
             + 1024; // Signature + key is 1024 bytes long
                     // Length in the TLV field
         let rsa4096_tlv_len = rsa4096_len - mem::size_of::<header::TbfHeaderTlv>();
 
-        let private_buf = rsa4096_private_key.unwrap();
-        let private_key_path = Path::new(&private_buf);
-        let public_buf = rsa4096_public_key.unwrap();
-        let public_key_path = Path::new(&public_buf);
+        let private_key_path_str = rsa4096_private_key.unwrap();
+        let private_key_path = Path::new(&private_key_path_str);
+        let private_key_contents = read_rsa_file(private_key_path).unwrap_or_else(|e| {
+            panic!(
+                "Failed to read private key from {:?}: {:?}",
+                private_key_path, e
+            );
+        });
 
-        let private_key_der = read_rsa_file(private_key_path)
-            .map_err(|e| {
-                panic!(
-                    "Failed to read private key from {:?}: {:?}",
-                    private_key_path, e
-                );
-            })
-            .unwrap();
-
-        let public_key_der = read_rsa_file(public_key_path)
-            .map_err(|e| {
-                panic!(
-                    "Failed to read public key from {:?}: {:?}",
-                    public_key_path, e
-                );
-            })
-            .unwrap();
-
-        let key_pair = signature::RsaKeyPair::from_der(&private_key_der)
-            .map_err(|e| {
+        let key_pair = ring::signature::RsaKeyPair::from_pkcs8(&private_key_contents)
+            .unwrap_or_else(|e| {
                 panic!("RSA4096 could not be parsed: {:?}", e);
-            })
-            .unwrap();
+            });
 
-        let public_key = rsa_der::public_key_from_der(&public_key_der);
-
-        let public_modulus = match public_key {
-            Ok((n, _)) => n,
-            Err(_) => {
-                panic!("RSA4096 signature requested but provided public key could not be parsed.");
-            }
-        };
+        let public_key: ring::signature::RsaPublicKeyComponents<Vec<u8>> =
+            ring::signature::RsaPublicKeyComponents {
+                n: key_pair
+                    .public_key()
+                    .modulus()
+                    .big_endian_without_leading_zero()
+                    .to_vec(),
+                e: key_pair
+                    .public_key()
+                    .exponent()
+                    .big_endian_without_leading_zero()
+                    .to_vec(),
+            };
 
         if key_pair.public_modulus_len() != 512 {
             // A 4096-bit key should have a 512-byte modulus
             panic!(
                 "RSA4096 signature requested but key {:?} is not 4096 bits, it is {} bits",
                 private_key_path,
-                private_key_der.len() * 8
+                key_pair.public_modulus_len() * 8
             );
         }
         let rng = rand::SystemRandom::new();
@@ -1030,7 +1014,7 @@ pub fn elf_to_tbf(
             });
         let mut credentials = vec![0; 1024];
         credentials[..key_pair.public_modulus_len()]
-            .copy_from_slice(&public_modulus[..key_pair.public_modulus_len()]);
+            .copy_from_slice(&public_key.n[..key_pair.public_modulus_len()]);
         for (i, sig) in signature.iter().enumerate() {
             let index = i + key_pair.public_modulus_len();
             credentials[index] = *sig;

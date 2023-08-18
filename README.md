@@ -39,7 +39,6 @@ Options:
       --sha384                                         Add a SHA384 hash credential to each TBF
       --sha512                                         Add a SHA512 hash credential to each TBF
       --rsa4096-private <rsa4096-private-key>          Add an 4096-bit RSA signature credential using this private key
-      --rsa4096-public <rsa4096-public-key>            Add an 4096-bit RSA signature credential containing this public key
   -h, --help                                           Print help
   -V, --version                                        Print version
 ```
@@ -73,16 +72,16 @@ elf2tab can also sign the TBF with a public/private RSA key pair. To generate
 compatible keys:
 
     $ openssl genrsa -aes256 -out tockkey.private.pem 4096
-    $ openssl rsa -in tockkey.private.pem -outform der -out tockkey.private.der
+    $ openssl pkcs8 -topk8 -nocrypt -outform der -in tockkey.private.pem -out tockkey.private.pk8
     $ openssl rsa -in tockkey.private.pem -outform der -pubout -out tockkey.public.der
 
 Then pass the keys to elf2tab:
 
-    $ elf2tab --rsa4096-private tockkey.private.der --rsa4096-public tockkey.public.der ...
+    $ elf2tab --rsa4096-private tockkey.private.pk8 ...
 
 Example including multiple credentials:
 
-    $ elf2tab --sha256 --sha384 --sha512 --rsa4096-private tockkey.private.der --rsa4096-public tockkey.public.der ...
+    $ elf2tab --sha256 --sha384 --sha512 --rsa4096-private tockkey.private.pk8 ...
 
 
 elf2tab Details
