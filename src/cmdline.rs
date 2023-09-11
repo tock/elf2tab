@@ -134,7 +134,8 @@ pub struct Opt {
     #[arg(
         long = "write_id",
         id = "write_id",
-        help = "A storage ID used for writing data"
+        help = "A storage ID used for writing data",
+        value_parser=clap_num::maybe_hex::<u32>,
     )]
     pub write_id: Option<u32>,
 
@@ -143,6 +144,7 @@ pub struct Opt {
         id = "read_ids",
         help = "Storage IDs that this app is allowed to read",
         num_args = 1..,
+        value_parser=clap_num::maybe_hex::<u32>,
     )]
     pub read_ids: Option<Vec<u32>>,
 
@@ -151,6 +153,7 @@ pub struct Opt {
         id = "access_ids",
         help = "Storage IDs that this app is allowed to write",
         num_args = 1..,
+        value_parser=clap_num::maybe_hex::<u32>,
     )]
     pub access_ids: Option<Vec<u32>>,
 
