@@ -868,6 +868,9 @@ pub fn elf_to_tbf(
 
     let footers_initial_len = binary_index - tbfheader.binary_end_offset() as usize;
 
+    // Flag to track if we are guaranteed to have a reserved space footer.
+    let mut ensured_footer_reserved_space: bool = false;
+
     // Make sure the footer is at least the minimum requested size.
     if (minimum_footer_size as usize) > footers_initial_len {
         let mut needed_footer_reserved_space = (minimum_footer_size as usize) - footers_initial_len;
@@ -885,6 +888,10 @@ pub fn elf_to_tbf(
 
         // Add reserved space to the footer.
         binary_index += needed_footer_reserved_space;
+
+        // Since we ensured there is room for the reserved space footer, we mark
+        // that that footer will be created.
+        ensured_footer_reserved_space = true;
     }
 
     // Optionally calculate the additional padding needed to ensure the app size
@@ -917,9 +924,10 @@ pub fn elf_to_tbf(
         binary_index += pad;
 
         // If there is room for a TbfFooterCredentials we will use that.
-        if pad
-            >= (mem::size_of::<header::TbfHeaderTlv>()
-                + mem::size_of::<header::TbfFooterCredentialsType>())
+        if ensured_footer_reserved_space
+            || pad
+                >= (mem::size_of::<header::TbfHeaderTlv>()
+                    + mem::size_of::<header::TbfFooterCredentialsType>())
         {
             0
         } else {
