@@ -269,7 +269,7 @@ impl fmt::Display for TbfHeaderKernelVersion {
         writeln!(
             f,
             "
-    kernel version: ^{}.{}",
+        kernel version: ^{}.{}",
             self.major, self.minor
         )
     }
