@@ -138,6 +138,7 @@ fn main() {
             opt.permissions.to_vec(),
             (opt.write_id, opt.read_ids.clone(), opt.access_ids.clone()),
             minimum_tock_kernel_version,
+            opt.short_id,
             opt.disabled,
             opt.minimum_footer_size,
             opt.app_version,
