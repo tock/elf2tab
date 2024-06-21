@@ -18,8 +18,8 @@ pub enum TbfHeaderTypes {
     Permissions = 6,
     Persistent = 7,
     KernelVersion = 8,
-
     Program = 9,
+    ShortId = 10,
 
     Credentials = 128,
 }
@@ -122,6 +122,13 @@ struct TbfHeaderKernelVersion {
     base: TbfHeaderTlv,
     major: u16,
     minor: u16,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+struct TbfHeaderShortId {
+    base: TbfHeaderTlv,
+    short_id: u32,
 }
 
 #[repr(C)]
@@ -275,6 +282,18 @@ impl fmt::Display for TbfHeaderKernelVersion {
     }
 }
 
+impl fmt::Display for TbfHeaderShortId {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        // ^x.y means >= x.y, < (x+1).0
+        writeln!(
+            f,
+            "
+               ShortId: {0:>#10X}",
+            self.short_id
+        )
+    }
+}
+
 const FLAGS_ENABLE: u32 = 0x0000_0001;
 
 pub struct TbfHeader {
@@ -287,6 +306,7 @@ pub struct TbfHeader {
     hdr_permissions: Option<TbfHeaderPermissions>,
     hdr_persistent: Option<TbfHeaderPersistentAcl>,
     hdr_kernel_version: Option<TbfHeaderKernelVersion>,
+    hdr_short_id: Option<TbfHeaderShortId>,
     package_name: String,
     package_name_pad: usize,
 }
@@ -318,6 +338,7 @@ impl TbfHeader {
             hdr_permissions: None,
             hdr_persistent: None,
             hdr_kernel_version: None,
+            hdr_short_id: None,
             package_name: String::new(),
             package_name_pad: 0,
         }
@@ -340,6 +361,7 @@ impl TbfHeader {
         permissions: Vec<(u32, u32)>,
         storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
         kernel_version: Option<(u16, u16)>,
+        short_id: Option<u32>,
         disabled: bool,
     ) -> usize {
         // Need to calculate lengths ahead of time. Need the base and the
@@ -433,6 +455,11 @@ impl TbfHeader {
         // Check if we have to include a kernel version header.
         if kernel_version.is_some() {
             header_length += mem::size_of::<TbfHeaderKernelVersion>();
+        }
+
+        // Check if we have to include a kernel version header.
+        if short_id.is_some() {
+            header_length += mem::size_of::<TbfHeaderShortId>();
         }
 
         let mut flags = 0x0000_0000;
@@ -531,6 +558,17 @@ impl TbfHeader {
                 },
                 major: kernel_major,
                 minor: kernel_minor,
+            });
+        }
+
+        // If short_id is set, we have to include the header.
+        if let Some(short_id_num) = short_id {
+            self.hdr_short_id = Some(TbfHeaderShortId {
+                base: TbfHeaderTlv {
+                    tipe: TbfHeaderTypes::ShortId,
+                    length: 4,
+                },
+                short_id: short_id_num,
             });
         }
 
@@ -678,6 +716,11 @@ impl TbfHeader {
             header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_kernel_version) })?;
         }
 
+        // If the short id is set, include that TLV
+        if self.hdr_short_id.is_some() {
+            header_buf.write_all(unsafe { util::as_byte_slice(&self.hdr_short_id) })?;
+        }
+
         let current_length = header_buf.get_ref().len();
         util::do_pad(
             &mut header_buf,
@@ -745,6 +788,8 @@ impl fmt::Display for TbfHeader {
             .as_ref()
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         self.hdr_kernel_version
+            .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
+        self.hdr_short_id
             .map_or(Ok(()), |hdr| write!(f, "{}", hdr))?;
         Ok(())
     }

@@ -134,6 +134,7 @@ pub fn elf_to_tbf(
     permissions: Vec<(u32, u32)>,
     storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
     kernel_version: Option<(u16, u16)>,
+    short_id: Option<u32>,
     disabled: bool,
     minimum_footer_size: u32,
     app_version: u32,
@@ -460,6 +461,7 @@ pub fn elf_to_tbf(
         permissions,
         storage_ids,
         kernel_version,
+        short_id,
         disabled,
     );
 

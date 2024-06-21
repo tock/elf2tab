@@ -31,6 +31,7 @@ Options:
       --write_id <write_id>                            A storage ID used for writing data
       --read_ids <read_ids>...                         Storage IDs that this app is allowed to read
       --access_ids <access_ids>...                     Storage IDs that this app is allowed to write
+      --short-id <short-id>                            ShortId to request in the app's header
       --kernel-major <kernel-major-version>            The kernel version that the app requires
       --kernel-minor <kernel-minor-version>            The minimum kernel minor version that the app requires
       --supported-boards <supported-boards>            comma separated list of boards this app is compatible with

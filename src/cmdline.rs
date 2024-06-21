@@ -158,6 +158,14 @@ pub struct Opt {
     pub access_ids: Option<Vec<u32>>,
 
     #[arg(
+        long = "short-id",
+        id = "short-id",
+        help = "ShortId to request in the app's header",
+        value_parser=clap_num::maybe_hex::<u32>,
+    )]
+    pub short_id: Option<u32>,
+
+    #[arg(
         long = "kernel-major",
         id = "kernel-major-version",
         help = "The kernel version that the app requires"
