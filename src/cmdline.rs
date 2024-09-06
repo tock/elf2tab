@@ -214,6 +214,13 @@ pub struct Opt {
         help = "Add an 4096-bit RSA signature credential using this private key"
     )]
     pub rsa4096_private_key: Option<PathBuf>,
+
+    #[arg(
+        long = "ecdsa-nist-p256-private",
+        id = "ecdsa-nist-p256-private-key",
+        help = "Add an ECDSA NIST P256 signature credential using this private key"
+    )]
+    pub ecdsa_nist_p256_private_key: Option<PathBuf>,
 }
 
 mod test {
