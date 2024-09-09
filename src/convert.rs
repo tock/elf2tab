@@ -141,6 +141,7 @@ pub fn elf_to_tbf(
     sha384: bool,
     sha512: bool,
     rsa4096_private_key: Option<PathBuf>,
+    ecdsa_nist_p256_private_key: Option<PathBuf>,
 ) -> io::Result<()> {
     let package_name = package_name.unwrap_or_default();
 
@@ -1112,6 +1113,63 @@ pub fn elf_to_tbf(
         footer_space_remaining -= rsa4096_len;
         if verbose {
             println!("Added PKCS#1v1.5 RSA4096 signature credential.");
+        }
+    }
+
+    if ecdsa_nist_p256_private_key.is_some() {
+        let private_key_path_str = ecdsa_nist_p256_private_key.unwrap();
+        let private_key_path = Path::new(&private_key_path_str);
+        let private_key_contents = read_rsa_file(private_key_path).unwrap_or_else(|e| {
+            panic!(
+                "Failed to read private key from {:?}: {:?}",
+                private_key_path, e
+            );
+        });
+
+        let rng = rand::SystemRandom::new();
+
+        let key_pair = ring::signature::EcdsaKeyPair::from_pkcs8(
+            &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
+            &private_key_contents,
+        )
+        .unwrap_or_else(|e| {
+            panic!("ECDSA NIST P256 could not be parsed: {:?}", e);
+        });
+
+        let signature = key_pair
+            .sign(&rng, &output[0..tbfheader.binary_end_offset() as usize])
+            .map_err(|e| {
+                panic!("Could not generate ECDSA NIST P256 signature: {:?}", e);
+            })
+            .unwrap();
+
+        let sig_len = signature.as_ref().len();
+
+        // Signature in R, S format is 64 bytes long
+        assert_eq!(sig_len, 64);
+
+        let nist_p256_len = mem::size_of::<header::TbfHeaderTlv>()
+            + mem::size_of::<header::TbfFooterCredentialsType>()
+            + sig_len;
+        let nist_p256_tlv_len = nist_p256_len - mem::size_of::<header::TbfHeaderTlv>();
+
+        let mut credentials = vec![0; sig_len];
+
+        credentials[..sig_len].copy_from_slice(signature.as_ref());
+
+        let nist_p256_credentials = header::TbfFooterCredentials {
+            base: header::TbfHeaderTlv {
+                tipe: header::TbfHeaderTypes::Credentials,
+                length: nist_p256_tlv_len as u16,
+            },
+            format: header::TbfFooterCredentialsType::EcdsaNistP256,
+            data: credentials,
+        };
+
+        output.write_all(nist_p256_credentials.generate().unwrap().get_ref())?;
+        footer_space_remaining -= nist_p256_len;
+        if verbose {
+            println!("Added PKCS#1v1.5 ECDSA NIST P256 signature credential.");
         }
     }
 

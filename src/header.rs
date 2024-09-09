@@ -34,6 +34,7 @@ pub enum TbfFooterCredentialsType {
     SHA256 = 3,
     SHA384 = 4,
     SHA512 = 5,
+    EcdsaNistP256 = 6,
 }
 
 #[repr(C)]
