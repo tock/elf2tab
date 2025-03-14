@@ -69,8 +69,11 @@ elf2tab supports adding credentials to the TBF footer of the generated TBF
 files. To add a hash, use one or more of these flags: `--sha256`, `--sha384`,
 `--sha512`.
 
-elf2tab can also sign the TBF with a public/private RSA key pair. To generate
-compatible keys:
+elf2tab can also sign the TBF with a public/private key pairs. elf2tab uses
+ring to do this, a range of commands to generate and prepare keys for ring can
+be found at: https://gist.github.com/briansmith/2ee42439923d8e65a266994d0f70180b
+
+To generate compatible RSA keys:
 
     $ openssl genrsa -aes256 -out tockkey.private.pem 4096
     $ openssl pkcs8 -topk8 -nocrypt -outform der -in tockkey.private.pem -out tockkey.private.pk8
@@ -84,6 +87,16 @@ Example including multiple credentials:
 
     $ elf2tab --sha256 --sha384 --sha512 --rsa4096-private tockkey.private.pk8 ...
 
+
+To generate compatible ECDSA NIST P256 keys:
+
+Use an existing PEM private key (one that starts with `-----BEGIN PRIVATE KEY-----`)
+
+    $ openssl pkcs8 -in priv_key.pem -topk8 -nocrypt -outform der > p256-private-key.p8
+
+Then pass the keys to elf2tab:
+
+    $ elf2tab --ecdsa-nist-p256-private p256-private-key.p8 ...
 
 elf2tab Details
 ---------------
