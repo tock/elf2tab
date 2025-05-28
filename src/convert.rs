@@ -711,12 +711,12 @@ pub fn elf_to_tbf(
             .read_exact(&mut content)
             .expect("failed to read segment data");
 
-        let start_segment = segment.p_paddr;
-        let end_segment = segment.p_paddr + segment.p_filesz;
+        let start_segment_va = segment.p_vaddr;
+        let end_segment_va = segment.p_vaddr + segment.p_filesz;
 
         // Check if this segment contains the entry point, and calculate the
         // offset we need to store in the TBF header if so.
-        if elf_file.ehdr.e_entry >= start_segment && elf_file.ehdr.e_entry < end_segment {
+        if elf_file.ehdr.e_entry >= start_segment_va && elf_file.ehdr.e_entry < end_segment_va {
             if init_fn_offset.is_some() {
                 // If the app is disabled just report a warning if we find two
                 // entry points. OTBN apps will contain two entry points, so
@@ -730,7 +730,7 @@ pub fn elf_to_tbf(
                 }
             } else {
                 // Get the position of the entry point in the segment.
-                let entry_offset = (elf_file.ehdr.e_entry - start_segment) as usize;
+                let entry_offset = (elf_file.ehdr.e_entry - start_segment_va) as usize;
                 // `init_fn_offset` is the offset from the end of the TBF header
                 // to the entry point within the application binary.
                 let tbf_entry_offset = (binary_index + entry_offset - header_length) as u32;
@@ -816,7 +816,7 @@ pub fn elf_to_tbf(
 
         // Save the end of this segment so we can check if padding is required
         // between segments.
-        last_segment_address_end = Some(end_segment as usize);
+        last_segment_address_end = Some((segment.p_paddr + segment.p_filesz) as usize);
 
         binary.extend(content);
         binary_index += segment.p_filesz as usize;
