@@ -351,9 +351,9 @@ pub fn elf_to_tbf(
                 continue;
             }
 
-            // Flash segments have to be marked executable, and we only care about
+            // Flash segments have to be marked read-only, and we only care about
             // segments that actually contain data to be loaded into flash.
-            if (segment.p_flags & elf::abi::PF_X) > 0
+            if (segment.p_flags & elf::abi::PF_W) == 0
                 && section_exists_in_segment(&elf_sections, segment)
             {
                 // If this is standard Tock PIC, then this virtual address will be
