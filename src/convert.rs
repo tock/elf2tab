@@ -663,37 +663,22 @@ pub fn elf_to_tbf(
         }
 
         // Insert padding between segments if needed.
-        if let Some(last_segment_address_end) = last_segment_address_end {
+        let padding = if let Some(last_segment_address_end) = last_segment_address_end {
             // We have a previous segment. Now, check if there is any padding
             // between the segments in the .elf.
             let chk_padding = (segment.p_paddr as usize).checked_sub(last_segment_address_end);
-
             if let Some(padding) = chk_padding {
-                if padding > 0 {
-                    if verbose {
-                        println!("  Including padding between segments size={}", padding);
-                    }
-
-                    if padding >= 4096 {
-                        // Warn the user that we're inserting a large amount of
-                        // padding (>= 4096, which is the ELF file segment padding)
-                        // into the binary. This can be a sign of an incorrect /
-                        // broken ELF file (where not all LOADed non-zero sized
-                        // sections are marked to be loaded from flash).
-                        println!("  Warning! Inserting a large amount of padding.");
-                    }
-
-                    // Insert the padding into the generated binary.
-                    binary.extend(vec![0; padding]);
-                    binary_index += padding;
-                }
+                padding
             } else {
                 println!(
                     "  Warning! Expecting ELF sections to be in physical (load) address order."
                 );
                 println!("           Not inserting padding, the resulting TBF may be broken.");
+                0
             }
-        }
+        } else {
+            0
+        };
 
         if verbose {
             println!(
@@ -743,10 +728,13 @@ pub fn elf_to_tbf(
 
         // Iterate all sections that are in the segment we just loaded.
         //
-        // We need two things:
+        // We need three things:
         // 1. To find all relevant relocation data we need to add.
         // 2. To find if there are any writeable flash regions we need to set in
         //    the TBF header.
+        // 3. To figure out if this segment contains relocation data only.
+        //    If so, skip it, since we'll add relocation data at the end.
+        let mut reloc_only = true;
         for (sh_name, shdr) in elf_sections.iter() {
             // Skip zero size sections.
             if shdr.sh_size == 0 {
@@ -765,34 +753,46 @@ pub fn elf_to_tbf(
                     );
                 }
 
+                // If this section contains relocations we should skip it now,
+                // since we're gathering relocs below to output at the end of
+                // the file. Otherwise we'd duplicate the data.
+                if sh_name.starts_with(".rel.") || sh_name.starts_with(".rela.") {
+                    continue;
+                } else {
+                    reloc_only = false;
+                }
+
                 // First, determine if we need to check for relocation data for
                 // this section. The section must be marked `SHF_WRITE`, as to
                 // use the relocations at runtime requires being able to update
                 // the contents of the section.
                 if shdr.sh_flags as u32 & elf::abi::SHF_WRITE > 0 {
-                    // Then check if there is a ".rel.<section name>" section
-                    // that we need to include in the relocation data.
+                    // Check for both .rel and .rela
+                    for prefix in [".rel", ".rela"] {
+                        // Then check if there is a ".rel[a].<section name>" section
+                        // that we need to include in the relocation data.
 
-                    // relocation_section_name = ".rel" + section_name
-                    let mut relocation_section_name: String = ".rel".to_owned();
-                    relocation_section_name.push_str(sh_name);
+                        // relocation_section_name = ".rel[a]" + section_name
+                        let mut relocation_section_name: String = prefix.to_owned();
+                        relocation_section_name.push_str(sh_name);
 
-                    // Get the contents of the relocation data if it exists and
-                    // add that data to a buffer of relocation data.
-                    let rel_data = elf_sections
-                        .iter()
-                        .find(|(sh_name, _)| *sh_name == relocation_section_name)
-                        .map_or(&[] as &[u8], |(_, shdr)| {
-                            elf_file.section_data(shdr).map_or(&[], |(data, _)| data)
-                        });
-                    relocation_binary.extend(rel_data);
+                        // Get the contents of the relocation data if it exists and
+                        // add that data to a buffer of relocation data.
+                        let rel_data = elf_sections
+                            .iter()
+                            .find(|(sh_name, _)| *sh_name == relocation_section_name)
+                            .map_or(&[] as &[u8], |(_, shdr)| {
+                                elf_file.section_data(shdr).map_or(&[], |(data, _)| data)
+                            });
+                        relocation_binary.extend(rel_data);
 
-                    if verbose && !rel_data.is_empty() {
-                        println!(
-                            "      Including relocation data ({0}). Length: {1} ({1:#x}) bytes.",
-                            relocation_section_name,
-                            rel_data.len(),
-                        );
+                        if verbose && !rel_data.is_empty() {
+                            println!(
+                                "      Including relocation data ({0}). Length: {1} ({1:#x}) bytes.",
+                                relocation_section_name,
+                                rel_data.len(),
+                            );
+                        }
                     }
                 }
 
@@ -814,12 +814,39 @@ pub fn elf_to_tbf(
             }
         }
 
-        // Save the end of this segment so we can check if padding is required
-        // between segments.
-        last_segment_address_end = Some(end_segment as usize);
+        if reloc_only {
+            if verbose {
+                println!("    Skipping segment since it only contains relocs");
+            }
+        } else {
+            // Handle padding now that we know we want something from this
+            // segment
+            if padding > 0 {
+                if verbose {
+                    println!("  Including padding between segments size={}", padding);
+                }
 
-        binary.extend(content);
-        binary_index += segment.p_filesz as usize;
+                if padding >= 4096 {
+                    // Warn the user that we're inserting a large amount of
+                    // padding (>= 4096, which is the ELF file segment padding)
+                    // into the binary. This can be a sign of an incorrect /
+                    // broken ELF file (where not all LOADed non-zero sized
+                    // sections are marked to be loaded from flash).
+                    println!("  Warning! Inserting a large amount of padding.");
+                }
+
+                // Insert the padding into the generated binary.
+                binary.extend(vec![0; padding]);
+                binary_index += padding;
+            }
+            // Save the end of this segment so we can check if padding is required
+            // between segments.
+            last_segment_address_end = Some((segment.p_paddr + segment.p_filesz) as usize);
+
+            // Finally add the actual content
+            binary.extend(content);
+            binary_index += segment.p_filesz as usize;
+        }
     }
 
     // Now that we know where the end of the section data is, we can check for
