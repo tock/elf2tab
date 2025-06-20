@@ -196,10 +196,11 @@ pub fn elf_to_tbf(
     // - RISC_V: make sure the entire TBF is a multiple of 4 to meet TBF
     //   alignment requirements.
     // - x86: use 4k padding to match page size.
+    // - Aarch64: use 4KiB padding to match page size.
     let trailing_padding = match elf_file.ehdr.e_machine {
         elf::abi::EM_ARM => Some(TrailingPadding::TotalSizePowerOfTwo),
         elf::abi::EM_RISCV => Some(TrailingPadding::TotalSizeMultiple(4)),
-        elf::abi::EM_386 => Some(TrailingPadding::TotalSizeMultiple(4096)),
+        elf::abi::EM_386 | elf::abi::EM_AARCH64 => Some(TrailingPadding::TotalSizeMultiple(4096)),
         _ => None,
     };
 
