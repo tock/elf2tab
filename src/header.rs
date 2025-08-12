@@ -20,6 +20,7 @@ pub enum TbfHeaderTypes {
     KernelVersion = 8,
     Program = 9,
     ShortId = 10,
+    Position = 11,
 
     Credentials = 128,
 }
@@ -130,6 +131,18 @@ struct TbfHeaderKernelVersion {
 struct TbfHeaderShortId {
     base: TbfHeaderTlv,
     short_id: u32,
+}
+
+pub enum PositionConfiguration {
+    RopiRwpi = 0,
+    Pie = 1,
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Debug)]
+struct TbfHeaderPosition {
+    base: TbfHeaderTlv,
+    configuration: u32,
 }
 
 #[repr(C)]
@@ -285,12 +298,22 @@ impl fmt::Display for TbfHeaderKernelVersion {
 
 impl fmt::Display for TbfHeaderShortId {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        // ^x.y means >= x.y, < (x+1).0
         writeln!(
             f,
             "
                ShortId: {0:>#10X}",
             self.short_id
+        )
+    }
+}
+
+impl fmt::Display for TbfHeaderPosition {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        writeln!(
+            f,
+            "
+               Position Independent: {}",
+            self.configuration
         )
     }
 }
@@ -308,6 +331,7 @@ pub struct TbfHeader {
     hdr_persistent: Option<TbfHeaderPersistentAcl>,
     hdr_kernel_version: Option<TbfHeaderKernelVersion>,
     hdr_short_id: Option<TbfHeaderShortId>,
+    hdr_position: Option<TbfHeaderPosition>,
     package_name: String,
     package_name_pad: usize,
 }
@@ -340,6 +364,7 @@ impl TbfHeader {
             hdr_persistent: None,
             hdr_kernel_version: None,
             hdr_short_id: None,
+            hdr_position: None,
             package_name: String::new(),
             package_name_pad: 0,
         }
@@ -363,6 +388,7 @@ impl TbfHeader {
         storage_ids: (Option<u32>, Option<Vec<u32>>, Option<Vec<u32>>),
         kernel_version: Option<(u16, u16)>,
         short_id: Option<u32>,
+        position_configuration: Option<PositionConfiguration>,
         disabled: bool,
     ) -> usize {
         // Need to calculate lengths ahead of time. Need the base and the
@@ -571,6 +597,17 @@ impl TbfHeader {
                 },
                 short_id: short_id_num,
             });
+        }
+
+        // If the position configuration is set, include that header.
+        if let Some(position_configuration) = position_configuration {
+            self.hdr_position = Some(TbfHeaderPosition {
+                base: TbfHeaderTlv {
+                    tipe: TbfHeaderTypes::Position,
+                    length: 4,
+                },
+                configuration: position_configuration as u32,
+            })
         }
 
         // Return the length by generating the header and seeing how long it is.

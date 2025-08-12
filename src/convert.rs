@@ -443,6 +443,23 @@ pub fn elf_to_tbf(
         }
     }
 
+    // Check if the _pie symbol is defined meaning this app uses -pie for
+    // position independence.
+    let position_configuration = if let Ok(Some((symtab, sym_strtab))) = elf_file.symbol_table() {
+        if let Some(_) = symtab.iter().find(|sym| {
+            let name = sym_strtab
+                .get(sym.st_name as usize)
+                .expect("Failed to parse symbol name");
+            name == "_pie"
+        }) {
+            Some(header::PositionConfiguration::Pie)
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     // Now we can create the first pass TBF header. This is mostly to get the
     // size of the header since we have to fill in some of the offsets later.
     let mut tbfheader = header::TbfHeader::new();
@@ -463,6 +480,7 @@ pub fn elf_to_tbf(
         storage_ids,
         kernel_version,
         short_id,
+        position_configuration,
         disabled,
     );
 
