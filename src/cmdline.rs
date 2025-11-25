@@ -64,12 +64,19 @@ pub struct Opt {
     #[arg(
         long = "minimum-ram-size",
         id = "min-ram-size",
-        help = "in bytes",
+        help = "in bytes - has no effect, kept for backwards compatibility",
         conflicts_with = "stack-size",
         conflicts_with = "heap-size",
         conflicts_with = "kernel-heap-size"
     )]
-    pub minimum_stack_size: Option<u32>,
+    pub _minimum_stack_size: Option<u32>,
+
+    #[arg(
+        long = "total-size-padding",
+        id = "padding",
+        help = "pad the total size of the binary to the multiple of <padding>. If not specified, use the architecture default",
+    )]
+    pub total_size_padding: Option<u32>,
 
     #[arg(
         long = "output-file",
