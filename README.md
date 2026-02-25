@@ -21,7 +21,6 @@ Options:
       --disable                                                Mark the app as disabled in the TBF flags
       --app-version <APP_VERSION>                              Set the version number [default: 0]
       --minimum-ram-size <min-ram-size>                        in bytes - has no effect, kept for backwards compatibility
-      --total-size-padding <padding>                           pad the total size of the binary to the multiple of <padding>. If not specified, use the architecture default
   -o, --output-file <filename>                                 output file name [default: TockApp.tab]
   -n, --package-name <pkg-name>                                package name
       --stack <stack-size>                                     in bytes
@@ -168,6 +167,23 @@ application binary are placed at useful addresses in flash. elf2tab will try to
 increase the size of the protected region to make the start of the TBF header at
 an address aligned to 256 bytes when the application binary is at its correct
 fixed address.
+
+#### Trailing Padding (Total Size Alignment)
+
+elf2tab adds trailing padding to each TBF to satisfy architecture-specific
+alignment constraints:
+
+- **ARM**: total size is padded to a power of 2 (for MPU region alignment).
+- **RISC-V**: total size is padded to a multiple of 4 (TBF alignment
+  requirement).
+- **x86**: total size is padded to a multiple of 4096 (page size).
+
+An application can override the default padding by defining a
+`tbf_total_size_padding` symbol in its ELF file. When present, the symbol's
+value is interpreted as a byte multiple, and the total TBF size will be padded
+to a multiple of that value instead of the architecture default. This is useful,
+for example, when a platform requires a different alignment than the
+architecture-level default.
 
 #### Syscall Permissions
 

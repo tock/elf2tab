@@ -147,7 +147,6 @@ fn main() {
             opt.sha512_enable,
             opt.rsa4096_private_key.clone(),
             opt.ecdsa_nist_p256_private_key.clone(),
-            opt.total_size_padding,
         )
         .unwrap();
         if opt.verbose {

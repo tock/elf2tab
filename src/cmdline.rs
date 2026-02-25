@@ -72,13 +72,6 @@ pub struct Opt {
     pub _minimum_stack_size: Option<u32>,
 
     #[arg(
-        long = "total-size-padding",
-        id = "padding",
-        help = "pad the total size of the binary to the multiple of <padding>. If not specified, use the architecture default",
-    )]
-    pub total_size_padding: Option<u32>,
-
-    #[arg(
         long = "output-file",
         short = 'o',
         id = "filename",
