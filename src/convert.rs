@@ -2,7 +2,6 @@
 
 use crate::header;
 use crate::util::{self, align_to, amount_alignment_needed};
-use ring::signature::KeyPair;
 use ring::{rand, signature};
 use sha2::{Digest, Sha256, Sha384, Sha512};
 use std::cmp;
@@ -1060,30 +1059,18 @@ pub fn elf_to_tbf(
                 panic!("RSA4096 could not be parsed: {:?}", e);
             });
 
-        let public_key: ring::signature::RsaPublicKeyComponents<Vec<u8>> =
-            ring::signature::RsaPublicKeyComponents {
-                n: key_pair
-                    .public_key()
-                    .modulus()
-                    .big_endian_without_leading_zero()
-                    .to_vec(),
-                e: key_pair
-                    .public_key()
-                    .exponent()
-                    .big_endian_without_leading_zero()
-                    .to_vec(),
-            };
+        let public_key: ring::signature::RsaPublicKeyComponents<Vec<u8>> = key_pair.public().into();
 
-        if key_pair.public_modulus_len() != 512 {
+        if key_pair.public().modulus_len() != 512 {
             // A 4096-bit key should have a 512-byte modulus
             panic!(
                 "RSA4096 signature requested but key {:?} is not 4096 bits, it is {} bits",
                 private_key_path,
-                key_pair.public_modulus_len() * 8
+                key_pair.public().modulus_len() * 8
             );
         }
         let rng = rand::SystemRandom::new();
-        let mut signature = vec![0; key_pair.public_modulus_len()];
+        let mut signature = vec![0; key_pair.public().modulus_len()];
         let _res = key_pair
             .sign(
                 &signature::RSA_PKCS1_SHA512,
@@ -1095,10 +1082,10 @@ pub fn elf_to_tbf(
                 panic!("Could not generate RSA4096 signature: {:?}", e);
             });
         let mut credentials = vec![0; 1024];
-        credentials[..key_pair.public_modulus_len()]
-            .copy_from_slice(&public_key.n[..key_pair.public_modulus_len()]);
+        credentials[..key_pair.public().modulus_len()]
+            .copy_from_slice(&public_key.n[..key_pair.public().modulus_len()]);
         for (i, sig) in signature.iter().enumerate() {
-            let index = i + key_pair.public_modulus_len();
+            let index = i + key_pair.public().modulus_len();
             credentials[index] = *sig;
         }
 
@@ -1133,6 +1120,7 @@ pub fn elf_to_tbf(
         let key_pair = ring::signature::EcdsaKeyPair::from_pkcs8(
             &ring::signature::ECDSA_P256_SHA256_FIXED_SIGNING,
             &private_key_contents,
+            &rand::SystemRandom::new(),
         )
         .unwrap_or_else(|e| {
             panic!("ECDSA NIST P256 could not be parsed: {:?}", e);
