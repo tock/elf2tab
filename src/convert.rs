@@ -60,6 +60,43 @@ fn segment_has_progbits_section(
     false
 }
 
+/// Sum the sizes of `.stack` NOBITS sections merged into a segment.
+///
+/// Some linkers merge the `.stack` NOBITS section into a writable PT_LOAD
+/// segment when it shares the flash load region (`AT > FLASH`). The stack is
+/// accounted for separately via `stack_len`, so its size must be subtracted
+/// from the segment's in-memory size to avoid double-counting it in the
+/// minimum RAM calculation. Only `.stack` is matched; `.bss` and `.data` are
+/// intentionally left in the count.
+fn stack_bytes_in_segment(
+    shdrs: &[(String, elf::section::SectionHeader)],
+    segment: &elf::segment::ProgramHeader,
+) -> u64 {
+    shdrs
+        .iter()
+        .filter(|(name, shdr)| {
+            name == ".stack"
+                && shdr.sh_type == elf::abi::SHT_NOBITS
+                && section_in_segment(shdr, segment)
+        })
+        .map(|(_, shdr)| shdr.sh_size)
+        .sum()
+}
+
+/// Compute the amount of RAM a segment requires for the minimum RAM size.
+///
+/// This is the segment's full in-memory size (`p_memsz`, covering `.data` and
+/// `.bss`) minus any `.stack` merged into it, since the stack is accounted for
+/// separately via `stack_len`. Keeping `.bss` counted while removing only
+/// `.stack` is what avoids both under-counting `.bss` and double-counting the
+/// stack.
+fn segment_ram_bytes(
+    shdrs: &[(String, elf::section::SectionHeader)],
+    segment: &elf::segment::ProgramHeader,
+) -> u64 {
+    segment.p_memsz - stack_bytes_in_segment(shdrs, segment)
+}
+
 /// Trim a segment to exclude leading and trailing NOBITS sections.
 ///
 /// Some linkers may merge NOBITS sections (.stack, .bss) with PROGBITS sections
@@ -343,16 +380,7 @@ pub fn elf_to_tbf(
             // Subtract any `.stack` section merged into this segment, since the
             // stack is accounted for separately via `stack_len`. Everything
             // else in the segment (notably `.data` and `.bss`) must be counted.
-            let stack_in_segment: u64 = elf_sections
-                .iter()
-                .filter(|(name, shdr)| {
-                    name == ".stack"
-                        && shdr.sh_type == elf::abi::SHT_NOBITS
-                        && section_in_segment(shdr, segment)
-                })
-                .map(|(_, shdr)| shdr.sh_size)
-                .sum();
-            minimum_ram_size += (segment.p_memsz - stack_in_segment) as u32;
+            minimum_ram_size += segment_ram_bytes(&elf_sections, segment) as u32;
         }
     }
     if verbose {
@@ -1344,4 +1372,162 @@ pub fn elf_to_tbf(
     util::do_pad(output, post_content_pad)?;
 
     Ok(())
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    // Build a SectionHeader with the fields the NOBITS logic cares about.
+    // `.stack`/`.data`/`.bss` are allocated and writable in a real ELF, so
+    // SHF_ALLOC | SHF_WRITE must be set for `section_in_segment` to match.
+    fn section(
+        sh_type: u32,
+        sh_addr: u64,
+        sh_offset: u64,
+        sh_size: u64,
+    ) -> elf::section::SectionHeader {
+        elf::section::SectionHeader {
+            sh_name: 0,
+            sh_type,
+            sh_flags: (elf::abi::SHF_ALLOC | elf::abi::SHF_WRITE) as u64,
+            sh_addr,
+            sh_offset,
+            sh_size,
+            sh_link: 0,
+            sh_info: 0,
+            sh_addralign: 1,
+            sh_entsize: 0,
+        }
+    }
+
+    // Build a writable PT_LOAD ProgramHeader.
+    fn segment(
+        p_offset: u64,
+        p_vaddr: u64,
+        p_paddr: u64,
+        p_filesz: u64,
+        p_memsz: u64,
+    ) -> elf::segment::ProgramHeader {
+        elf::segment::ProgramHeader {
+            p_type: elf::abi::PT_LOAD,
+            p_offset,
+            p_vaddr,
+            p_paddr,
+            p_filesz,
+            p_memsz,
+            p_flags: elf::abi::PF_R | elf::abi::PF_W,
+            p_align: 1,
+        }
+    }
+
+    // Reproduces the x86/LLD merged segment: [.stack NOBITS] [.data PROGBITS]
+    // [.bss NOBITS] collapsed into one PT_LOAD with a nonzero FileSiz.
+    fn merged_stack_data_bss() -> (
+        Vec<(String, elf::section::SectionHeader)>,
+        elf::segment::ProgramHeader,
+    ) {
+        let sections = vec![
+            (
+                ".stack".to_string(),
+                section(elf::abi::SHT_NOBITS, 0x10000, 0xc000, 0x9000),
+            ),
+            (
+                ".data".to_string(),
+                section(elf::abi::SHT_PROGBITS, 0x19000, 0x15000, 0x64),
+            ),
+            (
+                ".bss".to_string(),
+                section(elf::abi::SHT_NOBITS, 0x19064, 0x15064, 0xd4),
+            ),
+        ];
+        let seg = segment(0xc000, 0x10000, 0x76451, 0x9064, 0x9138);
+        (sections, seg)
+    }
+
+    #[test]
+    fn detects_progbits_in_merged_segment() {
+        let (secs, seg) = merged_stack_data_bss();
+        assert!(segment_has_progbits_section(&secs, &seg));
+    }
+
+    #[test]
+    fn trims_leading_stack_and_trailing_bss() {
+        let (secs, mut seg) = merged_stack_data_bss();
+        trim_nobits_from_segment(&secs, &mut seg);
+        // Leading .stack (0x9000) removed: offset/vaddr/paddr advance by 0x9000.
+        assert_eq!(seg.p_offset, 0x15000);
+        assert_eq!(seg.p_vaddr, 0x19000);
+        assert_eq!(seg.p_paddr, 0x76451 + 0x9000);
+        // Trailing .bss removed from the file image: filesz == just .data.
+        assert_eq!(seg.p_filesz, 0x64);
+        // memsz shrinks only by the leading NOBITS, keeping trailing .bss in RAM.
+        assert_eq!(seg.p_memsz, 0x9138 - 0x9000);
+    }
+
+    #[test]
+    fn pure_nobits_segment_has_no_progbits() {
+        // A segment containing only NOBITS sections has no PROGBITS data.
+        let secs = vec![(
+            ".stack".to_string(),
+            section(elf::abi::SHT_NOBITS, 0x10000, 0xc000, 0x9000),
+        )];
+        let seg = segment(0xc000, 0x10000, 0x76451, 0x9000, 0x9000);
+        assert!(!segment_has_progbits_section(&secs, &seg));
+    }
+
+    #[test]
+    fn leaves_progbits_only_segment_untouched() {
+        // A segment with only .data has nothing to trim; fields are unchanged.
+        let secs = vec![(
+            ".data".to_string(),
+            section(elf::abi::SHT_PROGBITS, 0x2000, 0x1000, 0x40),
+        )];
+        let mut seg = segment(0x1000, 0x2000, 0x2000, 0x40, 0x40);
+        trim_nobits_from_segment(&secs, &mut seg);
+        assert_eq!(seg.p_offset, 0x1000);
+        assert_eq!(seg.p_filesz, 0x40);
+        assert_eq!(seg.p_memsz, 0x40);
+    }
+
+    #[test]
+    fn trailing_only_nobits_trims_filesz_not_offset() {
+        // Unique vs. the merged-segment test: with no leading NOBITS, the
+        // segment start (p_offset/p_paddr) must not move at all.
+        let secs = vec![
+            (
+                ".data".to_string(),
+                section(elf::abi::SHT_PROGBITS, 0x2000, 0x1000, 0x40),
+            ),
+            (
+                ".bss".to_string(),
+                section(elf::abi::SHT_NOBITS, 0x2040, 0x1040, 0xd4),
+            ),
+        ];
+        let mut seg = segment(0x1000, 0x2000, 0x2000, 0x40, 0x114);
+        trim_nobits_from_segment(&secs, &mut seg);
+        assert_eq!(seg.p_offset, 0x1000); // unchanged
+        assert_eq!(seg.p_filesz, 0x40); // .bss excluded from flash
+        assert_eq!(seg.p_memsz, 0x114); // .bss still counted in RAM
+    }
+
+    #[test]
+    fn ram_accounting_subtracts_stack_but_keeps_bss() {
+        // Exercises the actual min-RAM computation: reverting to `p_memsz`
+        // (stack double-count) or dropping `.bss` would change this result.
+        let (secs, seg) = merged_stack_data_bss();
+        assert_eq!(segment_ram_bytes(&secs, &seg), 0x138); // .data (0x64) + .bss (0xd4)
+    }
+
+    #[test]
+    fn bss_is_never_treated_as_stack() {
+        // A future rename of .stack must not silently break RAM accounting:
+        // .bss must never be subtracted.
+        let secs = vec![(
+            ".bss".to_string(),
+            section(elf::abi::SHT_NOBITS, 0x2000, 0x1000, 0xd4),
+        )];
+        let seg = segment(0x1000, 0x2000, 0x2000, 0, 0xd4);
+        assert_eq!(stack_bytes_in_segment(&secs, &seg), 0);
+    }
 }
