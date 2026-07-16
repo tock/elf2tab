@@ -187,21 +187,10 @@ pub fn elf_to_tbf(
         TotalSizePowerOfTwo,
         /// Make sure the entire TBF is a multiple of a specific value.
         TotalSizeMultiple(usize),
+        /// To prevent wasted space, only pad to:
+        /// (X - 1) * (TotalSizePowerOfTwo / 8) < size < X * (TotalSizePowerOfTwo / 8)
+        MaskedPowerOfTwo,
     }
-
-    // Add trailing padding for certain architectures.
-    //
-    // - ARM: make sure the entire TBF is a power of 2 to make configuring the
-    //   MPU easy.
-    // - RISC_V: make sure the entire TBF is a multiple of 4 to meet TBF
-    //   alignment requirements.
-    // - x86: use 4k padding to match page size.
-    let trailing_padding = match elf_file.ehdr.e_machine {
-        elf::abi::EM_ARM => Some(TrailingPadding::TotalSizePowerOfTwo),
-        elf::abi::EM_RISCV => Some(TrailingPadding::TotalSizeMultiple(4)),
-        elf::abi::EM_386 => Some(TrailingPadding::TotalSizeMultiple(4096)),
-        _ => None,
-    };
 
     ////////////////////////////////////////////////////////////////////////////
     // Determine the amount of RAM this app needs.
@@ -897,6 +886,30 @@ pub fn elf_to_tbf(
         ensured_footer_reserved_space = true;
     }
 
+    // Add trailing padding for certain architectures.
+    // - ARM: make sure the entire TBF is a power of 2 to make configuring the
+    //   MPU easy and to make using the generated TBFs directly easy (for apps <64kB).
+    //   However, for larger apps (i.e., apps >64kB) round up to the
+    //   nearest power of 2 and then use subregions to limit wasted flash.
+    //   This is still compatible with the MPU but may make using multiple TBFs
+    //   more difficult due to alignment restrictions.
+    // - RISC_V: make sure the entire TBF is a multiple of 4 to meet TBF
+    //   alignment requirements.
+    // - x86: use 4k padding to match page size.
+    let trailing_padding = match elf_file.ehdr.e_machine {
+        elf::abi::EM_ARM => {
+            // Do power of two padding if less than 64KB, otherwise do masked.
+            if binary_index < 65536 {
+                Some(TrailingPadding::TotalSizePowerOfTwo)
+            } else {
+                Some(TrailingPadding::MaskedPowerOfTwo)
+            }
+        }
+        elf::abi::EM_RISCV => Some(TrailingPadding::TotalSizeMultiple(4)),
+        elf::abi::EM_386 => Some(TrailingPadding::TotalSizeMultiple(4096)),
+        _ => None,
+    };
+
     // Optionally calculate the additional padding needed to ensure the app size
     // meets the padding requirements.
     //
@@ -920,6 +933,16 @@ pub fn elf_to_tbf(
             }
             TrailingPadding::TotalSizeMultiple(multiple) => {
                 (multiple - (binary_index % multiple)) % multiple
+            }
+            TrailingPadding::MaskedPowerOfTwo => {
+                // Find the next power of two.
+                let next_power2 = 1 << (32 - (binary_index as u32).leading_zeros());
+                let multiple = next_power2 / 8;
+                let number_of_unmasked_subregions = binary_index.div_ceil(multiple);
+                let target_size = number_of_unmasked_subregions * multiple;
+
+                // Pad to the nearest multiple of (power of two / 8).
+                target_size - binary_index
             }
         };
 
