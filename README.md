@@ -16,32 +16,33 @@ Arguments:
   <elf[,architecture]>...  application file(s) to package
 
 Options:
-  -v, --verbose                                        Be verbose
-      --deterministic                                  Produce a deterministic TAB file
-      --disable                                        Mark the app as disabled in the TBF flags
-      --app-version <APP_VERSION>                      Set the version number [default: 0]
-      --minimum-ram-size <min-ram-size>                in bytes
-  -o, --output-file <filename>                         output file name [default: TockApp.tab]
-  -n, --package-name <pkg-name>                        package name
-      --stack <stack-size>                             in bytes
-      --app-heap <heap-size>                           in bytes [default: 1024]
-      --kernel-heap <kernel-heap-size>                 in bytes [default: 1024]
-      --protected-region-size <protected-region-size>  Size of the protected region (including headers)
-      --permissions <permissions>...                   A list of driver numbers and allowed commands
-      --write_id <write_id>                            A storage ID used for writing data
-      --read_ids <read_ids>...                         Storage IDs that this app is allowed to read
-      --access_ids <access_ids>...                     Storage IDs that this app is allowed to write
-      --short-id <short-id>                            ShortId to request in the app's header
-      --kernel-major <kernel-major-version>            The kernel version that the app requires
-      --kernel-minor <kernel-minor-version>            The minimum kernel minor version that the app requires
-      --supported-boards <supported-boards>            comma separated list of boards this app is compatible with
-      --minimum-footer-size <min-footer-size>          Minimum number of bytes to reserve space for in the footer [default: 0]
-      --sha256                                         Add a SHA256 hash credential to each TBF
-      --sha384                                         Add a SHA384 hash credential to each TBF
-      --sha512                                         Add a SHA512 hash credential to each TBF
-      --rsa4096-private <rsa4096-private-key>          Add an 4096-bit RSA signature credential using this private key
-  -h, --help                                           Print help
-  -V, --version                                        Print version
+  -v, --verbose                                                Be verbose
+      --deterministic                                          Produce a deterministic TAB file
+      --disable                                                Mark the app as disabled in the TBF flags
+      --app-version <APP_VERSION>                              Set the version number [default: 0]
+      --minimum-ram-size <min-ram-size>                        in bytes - has no effect, kept for backwards compatibility
+  -o, --output-file <filename>                                 output file name [default: TockApp.tab]
+  -n, --package-name <pkg-name>                                package name
+      --stack <stack-size>                                     in bytes
+      --app-heap <heap-size>                                   in bytes [default: 1024]
+      --kernel-heap <kernel-heap-size>                         in bytes [default: 1024]
+      --protected-region-size <protected-region-size>          Size of the protected region (including headers)
+      --permissions <permissions>...                           A list of driver numbers and allowed commands
+      --write_id <write_id>                                    A storage ID used for writing data
+      --read_ids <read_ids>...                                 Storage IDs that this app is allowed to read
+      --access_ids <access_ids>...                             Storage IDs that this app is allowed to write
+      --short-id <short-id>                                    ShortId to request in the app's header
+      --kernel-major <kernel-major-version>                    The kernel version that the app requires
+      --kernel-minor <kernel-minor-version>                    The minimum kernel minor version that the app requires
+      --supported-boards <supported-boards>                    comma separated list of boards this app is compatible with
+      --minimum-footer-size <min-footer-size>                  Minimum number of bytes to reserve space for in the footer [default: 0]
+      --sha256                                                 Add a SHA256 hash credential to each TBF
+      --sha384                                                 Add a SHA384 hash credential to each TBF
+      --sha512                                                 Add a SHA512 hash credential to each TBF
+      --rsa4096-private <rsa4096-private-key>                  Add an 4096-bit RSA signature credential using this private key
+      --ecdsa-nist-p256-private <ecdsa-nist-p256-private-key>  Add an ECDSA NIST P256 signature credential using this private key
+  -h, --help                                                   Print help
+  -V, --version                                                Print version
 ```
 
 For example, converting a "blink" app from a compiled .elf file (for a Cortex-M4
@@ -166,6 +167,23 @@ application binary are placed at useful addresses in flash. elf2tab will try to
 increase the size of the protected region to make the start of the TBF header at
 an address aligned to 256 bytes when the application binary is at its correct
 fixed address.
+
+#### Trailing Padding (Total Size Alignment)
+
+elf2tab adds trailing padding to each TBF to satisfy architecture-specific
+alignment constraints:
+
+- **ARM**: total size is padded to a power of 2 (for MPU region alignment).
+- **RISC-V**: total size is padded to a multiple of 4 (TBF alignment
+  requirement).
+- **x86**: total size is padded to a multiple of 4096 (page size).
+
+An application can override the default padding by defining a
+`tbf_total_size_padding` symbol in its ELF file. When present, the symbol's
+value is interpreted as a byte multiple, and the total TBF size will be padded
+to a multiple of that value instead of the architecture default. This is useful,
+for example, when a platform requires a different alignment than the
+architecture-level default.
 
 #### Syscall Permissions
 

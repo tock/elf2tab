@@ -321,7 +321,10 @@ pub fn elf_to_tbf(
     // - RISC_V: make sure the entire TBF is a multiple of 4 to meet TBF
     //   alignment requirements.
     // - x86: use 4k padding to match page size.
-    let trailing_padding = match elf_file.ehdr.e_machine {
+    //
+    // This default may be overridden by a `tbf_total_size_padding` symbol
+    // in the ELF file.
+    let arch_trailing_padding = match elf_file.ehdr.e_machine {
         elf::abi::EM_ARM => Some(TrailingPadding::TotalSizePowerOfTwo),
         elf::abi::EM_RISCV => Some(TrailingPadding::TotalSizeMultiple(4)),
         elf::abi::EM_386 => Some(TrailingPadding::TotalSizeMultiple(4096)),
@@ -607,25 +610,36 @@ pub fn elf_to_tbf(
     // Adjust the protected region size to make fixed address work
     ////////////////////////////////////////////////////////////////////////////
 
-    // Applications can hint a desired protected region size to elf2tab by
-    // defining a special `tbf_protected_region_size` symbol:
-    let protected_region_size_symbol =
+    // Applications can hint configuration to elf2tab by defining special
+    // symbols:
+    //
+    // - `tbf_protected_region_size`: desired protected region size.
+    // - `tbf_total_size_padding`: pad total size to a multiple of this value,
+    //   overriding the architecture default.
+    let (protected_region_size_symbol, total_size_padding_symbol) =
         if let Ok(Some((symtab, sym_strtab))) = elf_file.symbol_table() {
-            // We are looking for the `tbf_protected_region_size` symbol and its
-            // value. If it exists, we can use it as a hint for the protected
-            // region size.
-            symtab
-                .iter()
-                .find(|sym| {
-                    let name = sym_strtab
-                        .get(sym.st_name as usize)
-                        .expect("Failed to parse symbol name");
-                    name == "tbf_protected_region_size"
-                })
-                .map(|tbf_header_sym| tbf_header_sym.st_value as u32)
+            let mut prs = None;
+            let mut tsp = None;
+            for sym in symtab.iter() {
+                let name = sym_strtab
+                    .get(sym.st_name as usize)
+                    .expect("Failed to parse symbol name");
+                if name == "tbf_protected_region_size" {
+                    prs = Some(sym.st_value as u32);
+                } else if name == "tbf_total_size_padding" {
+                    tsp = Some(sym.st_value as usize);
+                }
+            }
+            (prs, tsp)
         } else {
-            None
+            (None, None)
         };
+
+    // Override trailing padding if specified in the ELF via the
+    // `tbf_total_size_padding` symbol.
+    let trailing_padding = total_size_padding_symbol
+        .map(TrailingPadding::TotalSizeMultiple)
+        .or(arch_trailing_padding);
 
     // Determine the protected region size by checking the following sources in
     // this order:

@@ -150,7 +150,7 @@ fn main() {
         )
         .unwrap();
         if opt.verbose {
-            println!("");
+            println!();
         }
 
         match outfile.write_all(output_vector.as_ref()) {
