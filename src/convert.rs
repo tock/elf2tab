@@ -239,8 +239,8 @@ fn section_in_segment(
 ///
 /// This will place all segments from the ELF file into a binary and prepend a
 /// TBF header to it. For all writeable sections in the included segments, if
-/// there is a .rel.X section it will be included at the end with a 32 bit
-/// length parameter first.
+/// there is a .rel.X (ARM) or .rela.X (RISC-V) section it will be included at
+/// the end with a 32 bit length parameter first.
 ///
 /// Assumptions:
 /// - Any segments that are writable and set to be loaded into flash but with a
@@ -958,11 +958,31 @@ pub fn elf_to_tbf(
                         });
                     relocation_binary.extend(rel_data);
 
+                    // RISC-V uses ".rela.<section name>" instead, so check
+                    // for that too.
+                    let mut rela_section_name: String = ".rela".to_owned();
+                    rela_section_name.push_str(sh_name);
+                    let rela_data = elf_sections
+                        .iter()
+                        .find(|(sh_name, _)| *sh_name == rela_section_name)
+                        .map_or(&[] as &[u8], |(_, shdr)| {
+                            elf_file.section_data(shdr).map_or(&[], |(data, _)| data)
+                        });
+                    relocation_binary.extend(rela_data);
+
                     if verbose && !rel_data.is_empty() {
                         println!(
                             "      Including relocation data ({0}). Length: {1} ({1:#x}) bytes.",
                             relocation_section_name,
                             rel_data.len(),
+                        );
+                    }
+
+                    if verbose && !rela_data.is_empty() {
+                        println!(
+                            "      Including relocation data ({0}). Length: {1} ({1:#x}) bytes.",
+                            rela_section_name,
+                            rela_data.len(),
                         );
                     }
                 }
