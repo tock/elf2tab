@@ -243,9 +243,9 @@ fn section_in_segment(
 /// the end with a 32 bit length parameter first.
 ///
 /// Assumptions:
-/// - Any segments that are writable and set to be loaded into flash but with a
-///   different virtual address will be in RAM and should count towards minimum
-///   required RAM.
+/// - Any segments that are set to be loaded into flash but with a different
+///   virtual address will be in RAM and should count towards minimum required
+///   RAM.
 /// - Sections that are writeable flash regions include .wfr in their name.
 pub fn elf_to_tbf(
     input_file: &mut fs::File,
@@ -371,11 +371,12 @@ pub fn elf_to_tbf(
         // - Have different virtual and physical addresses, meaning they are
         //   loaded into flash but actually reside in memory.
         // - Are not zero size in memory.
-        // - Are writable (RAM should be writable).
+        //
+        // The segments do not have to be writable since relocatable RISC-V
+        // apps also run their code from RAM.
         if segment.p_type == elf::abi::PT_LOAD
             && segment.p_vaddr != segment.p_paddr
             && segment.p_memsz > 0
-            && ((segment.p_flags & elf::abi::PF_W) > 0)
         {
             // Subtract any `.stack` section merged into this segment, since the
             // stack is accounted for separately via `stack_len`. Everything
