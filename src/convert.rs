@@ -239,13 +239,13 @@ fn section_in_segment(
 ///
 /// This will place all segments from the ELF file into a binary and prepend a
 /// TBF header to it. For all writeable sections in the included segments, if
-/// there is a .rel.X section it will be included at the end with a 32 bit
-/// length parameter first.
+/// there is a .rel.X (ARM) or .rela.X (RISC-V) section it will be included at
+/// the end with a 32 bit length parameter first.
 ///
 /// Assumptions:
-/// - Any segments that are writable and set to be loaded into flash but with a
-///   different virtual address will be in RAM and should count towards minimum
-///   required RAM.
+/// - Any segments that are set to be loaded into flash but with a different
+///   virtual address will be in RAM and should count towards minimum required
+///   RAM.
 /// - Sections that are writeable flash regions include .wfr in their name.
 pub fn elf_to_tbf(
     input_file: &mut fs::File,
@@ -371,11 +371,12 @@ pub fn elf_to_tbf(
         // - Have different virtual and physical addresses, meaning they are
         //   loaded into flash but actually reside in memory.
         // - Are not zero size in memory.
-        // - Are writable (RAM should be writable).
+        //
+        // The segments do not have to be writable since relocatable RISC-V
+        // apps also run their code from RAM.
         if segment.p_type == elf::abi::PT_LOAD
             && segment.p_vaddr != segment.p_paddr
             && segment.p_memsz > 0
-            && ((segment.p_flags & elf::abi::PF_W) > 0)
         {
             // Subtract any `.stack` section merged into this segment, since the
             // stack is accounted for separately via `stack_len`. Everything
@@ -958,11 +959,31 @@ pub fn elf_to_tbf(
                         });
                     relocation_binary.extend(rel_data);
 
+                    // RISC-V uses ".rela.<section name>" instead, so check
+                    // for that too.
+                    let mut rela_section_name: String = ".rela".to_owned();
+                    rela_section_name.push_str(sh_name);
+                    let rela_data = elf_sections
+                        .iter()
+                        .find(|(sh_name, _)| *sh_name == rela_section_name)
+                        .map_or(&[] as &[u8], |(_, shdr)| {
+                            elf_file.section_data(shdr).map_or(&[], |(data, _)| data)
+                        });
+                    relocation_binary.extend(rela_data);
+
                     if verbose && !rel_data.is_empty() {
                         println!(
                             "      Including relocation data ({0}). Length: {1} ({1:#x}) bytes.",
                             relocation_section_name,
                             rel_data.len(),
+                        );
+                    }
+
+                    if verbose && !rela_data.is_empty() {
+                        println!(
+                            "      Including relocation data ({0}). Length: {1} ({1:#x}) bytes.",
+                            rela_section_name,
+                            rela_data.len(),
                         );
                     }
                 }
